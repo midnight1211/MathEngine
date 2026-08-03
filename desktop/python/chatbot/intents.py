@@ -2218,7 +2218,7 @@ def _reg_calc_expr_nums():
         elif name == "calc.greens":
             def build(m, text, session):
                 P, Q = clean_expression(m.group("P")), clean_expression(m.group("Q"))
-                nums = find_numbers(text[text.find9m.group("Q")) + len(m.group("Q")):])
+                nums = find_numbers(text[text.find(m.group("Q")) + len(m.group("Q")):])
                 ax, bx, ay, by = (nums + ["0", "1", "0", "1"])[:4]
                 return EngineCommand(
                         f'calc:greens|{{"P":{jv(P)},"Q":{jv(Q)},"ax":{jnum(ax)},"bx":{jnum(bx)},"ay":{jnum(ay)},"by":{jnum(by)}}}',
@@ -2248,11 +2248,11 @@ INTENTS[0:0] = [
                    clean_expression(m.group("expr")), m.group("vars")),
                0, "Finding the critical points.", None)),
 ]
-
-# ---------------------------------------------------------------------------------------
-# EXPANDED COVERAGE (batch 15) - DiffEq's remianing ~53 operations.
-# ---------------------------------------------------------------------------------------
-
+# ─────────────────────────────────────────────────────────────────────────
+# EXPANDED COVERAGE (batch 15) — DiffEq's remaining ~53 operations.
+# ─────────────────────────────────────────────────────────────────────────
+ 
+def _build_de_expr1_nums(op: str, num_keys, verb: str, defaults=None, expr_key="f"):
     def build(m: Match, text: str, session) -> EngineCommand:
         expr = clean_expression(m.group("expr"))
         rest = text[text.find(m.group("expr")) + len(m.group("expr")):]
@@ -2264,20 +2264,9 @@ INTENTS[0:0] = [
         pairs = ",".join(f'"{k}":{jnum(v)}' for k, v in zip(num_keys, vals))
         return EngineCommand(f'de:{op}|{{"{expr_key}":{jv(expr)}{"," + pairs if pairs else ""}}}',
                               0, f"{verb} {expr}.", expr)
-    return build    def build(m: Match, text: str, session) -> EngineCommand:
-        expr = clean_expression(m.group("expr"))
-        rest = text[text.find(m.group("expr")) + len(m.group("expr")):]
-        nums = find_numbers(rest)
-        defs = defaults or (["0"] * len(num_keys))
-        vals = list(nums[:len(num_keys)])
-        if len(vals) < len(num_keys):
-            vals += defs[len(vals):len(num_keys)]
-        pairs = ",".join(f'"{k}":{jnum(v)}' for k, v in zip(num_keys, vals))
-        return EngineCommand(f'de:{op}|{{"{expr_key}":{jv(expr)}{"," + pairs if pairs else ""}}}',
-                              0, f"{verb} {expr}.", expr)
     return build
-
-
+ 
+ 
 def _build_de_2expr_nums(op: str, num_keys, verb: str, defaults=None, keys=("f1", "f2")):
     def build(m: Match, text: str, session) -> EngineCommand:
         exprs = extract_expr_list(text)
@@ -2295,8 +2284,8 @@ def _build_de_2expr_nums(op: str, num_keys, verb: str, defaults=None, keys=("f1"
         return EngineCommand(f'de:{op}|{{"{keys[0]}":{jv(e1)},"{keys[1]}":{jv(e2)}{"," + pairs if pairs else ""}}}',
                               0, f"{verb}.", None)
     return build
-
-
+ 
+ 
 # Group A: numeric ODE methods sharing rk4's exact signature
 _DE_NUMERIC_METHODS = [
     ("de.adams_bashforth", "adams.bashforth", "adams_bashforth", "Adams-Bashforth"),
@@ -2312,14 +2301,14 @@ INTENTS[0:0] = [
         _build_de_numeric_method(op, label))
     for (n, label_re, op, label) in _DE_NUMERIC_METHODS
 ]
-
+ 
 # Group B: pure a,b,c
 _DE_ABC = [
     ("de.homogeneous2nd", [r"\bhomogeneous second.order\b", r"\bhomogeneous 2nd order\b"], "homogeneous2nd", ["a", "b", "c"], "Solving the homogeneous 2nd-order ODE", ["1", "3", "2"]),
     ("de.cauchy_euler", [r"\bcauchy.euler\b", r"\beuler equation\b.*\bode\b"], "cauchy_euler", ["a", "b", "c"], "Solving the Cauchy-Euler equation", ["1", "1", "1"]),
 ]
 INTENTS[0:0] = [Intent(n, _p(*p), _build_nums("de", op, k, v, d)) for (n, p, op, k, v, d) in _DE_ABC]
-
+ 
 # Group C: a,b,c + g(x)
 def _build_de_abc_g(op: str, verb: str):
     def build(m: Match, text: str, session) -> EngineCommand:
@@ -2329,12 +2318,12 @@ def _build_de_abc_g(op: str, verb: str):
         return EngineCommand(f'de:{op}|{{"a":{jnum(a)},"b":{jnum(b)},"c":{jnum(c)},"g":{jv(g)},"x":"x"}}',
                               0, f"{verb} with g(x)={g}.", None)
     return build
-
+ 
 INTENTS[0:0] = [
     Intent("de.undetermined_coeff", _p(r"\bundetermined coefficients\b.*\bg\(?x\)?\s*=\s*(?P<g>.+?)$", r"\bundetermined coefficients\b"), _build_de_abc_g("undetermined_coeff", "Solving by undetermined coefficients")),
     Intent("de.variation_params", _p(r"\bvariation of parameters\b.*\bg\(?x\)?\s*=\s*(?P<g>.+?)$", r"\bvariation of parameters\b"), _build_de_abc_g("variation_params", "Solving by variation of parameters")),
 ]
-
+ 
 # Group D/E: reduction_of_order, annihilator
 INTENTS[0:0] = [
     Intent("de.reduction_of_order", _p(r"\breduction of order\b"), lambda m, text, session: EngineCommand(
@@ -2347,7 +2336,7 @@ INTENTS[0:0] = [
     Intent("de.higher_order", _p(r"\bhigher.order (?:linear )?ode\b"), lambda m, text, session: EngineCommand(
         f'de:higher_order|{{"coeffs":{find_vector_literal(text) or "[]"}}}', 0, "Solving the higher-order linear ODE.", None)),
 ]
-
+ 
 # Group G: Laplace-related
 INTENTS[0:0] = [
     Intent("de.inverse_laplace", _p(rf"\binverse laplace(?: transform)? of\s+{E}$"), _build_de_expr1_nums("inverse_laplace", [], "Finding the inverse Laplace transform of", expr_key="F")),
@@ -2362,7 +2351,7 @@ INTENTS[0:0] = [
     Intent("de.duhamel", _p(r"\bduhamel'?s? principle\b"), _build_nums("de", "duhamel", ["alpha", "L", "tend"], "Applying Duhamel's principle", ["1", "3.14159", "1"])),
     Intent("de.parseval", _p(rf"\bparseval'?s? identity\b.*?{E}$", r"\bparseval'?s? identity\b"), _build_de_expr1_nums("parseval", ["L", "N"], "Applying Parseval's identity to", ["3.14159", "10"])),
 ]
-
+ 
 # Group H: word problems
 _DE_WORD = [
     ("de.mixing", [r"\bmixing problem\b"], "mixing", ["V", "cin", "rin", "rout", "c0", "tend"], "Solving the mixing problem", ["100", "0.5", "2", "2", "0", "100"]),
@@ -2373,9 +2362,9 @@ _DE_WORD = [
     ("de.comparison_thm", [r"\bcomparison theorem\b"], "comparison_thm", ["q1", "q2", "a", "b"], "Applying the Sturm comparison theorem", ["1", "4", "0", "3.14159"]),
 ]
 INTENTS[0:0] = [Intent(n, _p(*p), _build_nums("de", op, k, v, d)) for (n, p, op, k, v, d) in _DE_WORD]
-
+ 
 INTENTS[0:0] = [Intent("de.orthogonal_traj", _p(rf"\borthogonal trajector(?:y|ies) of\s+{E}$"), _build_de_expr1_nums("orthogonal_traj", [], "Finding the orthogonal trajectories of", expr_key="family"))]
-
+ 
 # Group I: special functions & series
 _DE_SPECIAL = [
     ("de.bessel", [r"\bbessel(?:'s)? equation\b"], "bessel", ["nu", "x"], "Solving Bessel's equation", ["0", "1"]),
@@ -2384,7 +2373,7 @@ _DE_SPECIAL = [
     ("de.power_series", [r"\bpower series solution\b"], "power_series", ["p", "q", "r", "terms"], "Finding the power series solution", ["0", "1", "0", "8"]),
 ]
 INTENTS[0:0] = [Intent(n, _p(*p), _build_nums("de", op, k, v, d)) for (n, p, op, k, v, d) in _DE_SPECIAL]
-
+ 
 INTENTS[0:0] = [
     Intent("de.fourier_series", _p(rf"\bfourier series of\s+{E}$"), _build_de_expr1_nums("fourier_series", ["L", "N"], "Computing the Fourier series of", ["3.14159", "10"])),
     Intent("de.fourier_sine", _p(rf"\bfourier sine series of\s+{E}$"), _build_de_expr1_nums("fourier_sine", ["L", "N"], "Computing the Fourier sine series of", ["3.14159", "10"])),
@@ -2395,7 +2384,7 @@ INTENTS[0:0] = [
     Intent("de.weak_solution", _p(r"\bweak solution\b"), lambda m, text, session: EngineCommand(
         f'de:weak_solution|{{"pde":"0","phi":"1","x":"x"}}', 0, "Analyzing the weak solution.", None)),
 ]
-
+ 
 # Group K: qualitative systems theory
 INTENTS[0:0] = [
     Intent("de.phase_portrait", _p(r"\bphase portrait\b"), _build_nums("de", "phase_portrait", ["a", "b", "c", "d"], "Analyzing the phase portrait", ["0", "1", "-1", "0"])),
@@ -2410,7 +2399,7 @@ INTENTS[0:0] = [
     Intent("de.limit_cycle", _p(r"\blimit cycle\b"), _build_de_2expr_nums("limit_cycle", ["xmin", "xmax", "ymin", "ymax"], "Checking for a limit cycle", ["-3", "3", "-3", "3"])),
     Intent("de.poincare_index", _p(r"\bpoincare index\b", r"\bpoincar[eé].bendixson\b"), _build_de_2expr_nums("poincare_index", ["cx", "cy", "r"], "Computing the Poincare index", ["0", "0", "1"])),
 ]
-
+ 
 # Group L: PDEs
 _DE_PDE = [
     ("de.heat_pde", [r"\bheat equation\b"], "heat_pde", {"ic": "sin(pi*x)"}, ["alpha", "L", "terms"], "Solving the heat equation", ["1", "1", "5"]),
@@ -2431,24 +2420,24 @@ def _reg_de_pde():
         out.append(Intent(name, _p(*pats), build))
     return out
 INTENTS[0:0] = _reg_de_pde()
-
+ 
 INTENTS[0:0] = [
     Intent("de.nonhomog_pde", _p(r"\bnonhomogeneous (?:heat )?pde\b"), _build_nums("de", "nonhomog_pde", ["alpha", "L", "terms"], "Solving the nonhomogeneous PDE", ["1", "3.14159", "5"])),
     Intent("de.fourier_transform_pde", _p(r"\bfourier transform\b.*\bpde\b"), _build_nums("de", "fourier_transform_pde", ["tend"], "Solving the PDE via Fourier transform", ["1"])),
     Intent("de.characteristics_1st", _p(r"\bmethod of characteristics\b"), _build_nums("de", "characteristics_1st", [], "Solving via the method of characteristics", [])),
 ]
-
-# ---------------------------------------------------------------------------------------
-# EXPANDED COVERAGE (batch 16) - Probability Theory's remaining 36 ops.
-# ---------------------------------------------------------------------------------------
-
+ 
+# ─────────────────────────────────────────────────────────────────────────
+# EXPANDED COVERAGE (batch 16) — Probability Theory's remaining 36 ops.
+# ─────────────────────────────────────────────────────────────────────────
+ 
 def _detect_dist(text: str) -> str:
     for d in ("normal", "exponential", "poisson", "uniform", "gamma", "binomial"):
         if d in text.lower():
             return d
     return "normal"
-
-
+ 
+ 
 _PT_NUMS = [
     ("prob.mgf_exp", [r"\bmgf\b.*\bexponential\b"], "mgf_exp", ["lambda", "t"], "Computing the exponential MGF", ["1", "0"]),
     ("prob.mgf_gamma", [r"\bmgf\b.*\bgamma\b"], "mgf_gamma", ["alpha", "beta", "t"], "Computing the gamma MGF", ["2", "1", "0"]),
@@ -2475,7 +2464,7 @@ _PT_NUMS = [
     ("prob.spacings", [r"\border statistics spacings\b", r"\bexponential spacings\b"], "spacings", ["n", "lambda"], "Computing the order-statistic spacings", ["10", "1"]),
 ]
 INTENTS[0:0] = [Intent(n, _p(*p), _build_nums("prob", op, k, v, d)) for (n, p, op, k, v, d) in _PT_NUMS]
-
+ 
 INTENTS[0:0] = [
     Intent("prob.mc_integrate", _p(rf"\bmonte carlo integrat\w*\s+{E}\s+from\s+(?P<a>{NUMLIKE})\s+to\s+(?P<b>{NUMLIKE})$"),
            lambda m, text, session: EngineCommand(
@@ -2518,13 +2507,13 @@ INTENTS[0:0] = [
         (lambda nums: f'prob:lst|{{"dist":{jv(_detect_dist(text))},"params":[0,1],"s":{jnum(nums[0] if nums else "1")}}}')(find_numbers(text)),
         1, "Computing the Laplace-Stieltjes transform.", None)),
 ]
-
-# ---------------------------------------------------------------------------------------
-# EXPANDED COVERAGE (batch 17) - AppliedMath's remaining ~53 operations
-# (the module richest in generous C++-side defauts, so even terse
+ 
+# ─────────────────────────────────────────────────────────────────────────
+# EXPANDED COVERAGE (batch 17) — AppliedMath's remaining ~53 operations
+# (the module richest in generous C++-side defaults, so even terse
 # phrasings like "wkb approximation" produce a valid, runnable command).
-# ---------------------------------------------------------------------------------------
-
+# ─────────────────────────────────────────────────────────────────────────
+ 
 _AM_NUMS = [
     ("am.classify_linear", [r"\bclassify\b.*\blinear system\b"], "classify_linear", ["a11", "a12", "a21", "a22"], "Classifying the linear system", ["0", "1", "-1", "0"]),
     ("am.michaelis", [r"\bmichaelis.menten\b"], "michaelis", ["kcat", "Km", "E0", "S0", "T", "n"], "Simulating Michaelis-Menten kinetics", ["1", "1", "1", "10", "10", "100"]),
@@ -2542,10 +2531,9 @@ _AM_NUMS = [
     ("am.multiple_scales", [r"\bmethod of multiple scales\b"], "multiple_scales", ["omega0", "eps", "order"], "Applying the method of multiple scales", ["1", "0.1", "2"]),
     ("am.brachistochrone", [r"\bbrachistochrone\b"], "brachistochrone", ["x0", "y0", "x1", "y1"], "Solving the brachistochrone problem", ["0", "0", "1", "-1"]),
 ]
-
 INTENTS[0:0] = [Intent(n, _p(*p), _build_nums("am", op, k, v, d)) for (n, p, op, k, v, d) in _AM_NUMS]
-
-
+ 
+ 
 def _build_am_expr_nums(op: str, expr_defaults: dict, num_keys, verb: str, defaults=None):
     """1+ named expression params (with defaults) plus trailing numeric params.
     expr_defaults maps JSON key -> default expr string; the first message
@@ -2576,8 +2564,8 @@ def _build_am_expr_nums(op: str, expr_defaults: dict, num_keys, verb: str, defau
         num_pairs = ",".join(f'"{k}":{jnum(v)}' for k, v in zip(num_keys, nvals))
         return EngineCommand(f'am:{op}|{{{str_pairs}{"," + num_pairs if num_pairs else ""}}}', 0, f"{verb}.", None)
     return build
-
-
+ 
+ 
 _AM_EXPR = [
     ("am.linearise", [r"\blineari[sz]e\b.*\bfixed point\b"], "linearise", {"f": "y", "g": "-x"}, ["x0", "y0"], "Linearizing about the fixed point", ["0", "0"]),
     ("am.euler_lagrange", [rf"\beuler.lagrange\b\s+(?:for|of)\s+{E}$", r"\beuler.lagrange equation\b"], "euler_lagrange", {"L": "yp^2"}, [], "Deriving the Euler-Lagrange equation for"),
@@ -2609,7 +2597,7 @@ _AM_EXPR = [
     ("am.shock_time", [r"\bshock formation time\b"], "shock_time", {"c": "1+u0", "u0": "sin(x)"}, ["xmin", "xmax"], "Computing the shock formation time", ["-5", "5"]),
     ("am.continuity_1d", [r"\b1d continuity equation\b", r"\bcontinuity equation\b.*\bfluid\b"], "continuity_1d", {"u": "1"}, ["rho", "L", "T"], "Solving the 1D continuity equation", ["1", "10", "1"]),
 ]
-
+ 
 def _reg_am_expr():
     out = []
     for entry in _AM_EXPR:
@@ -2617,18 +2605,18 @@ def _reg_am_expr():
         defs = entry[6] if len(entry) > 6 else None
         out.append(Intent(name, _p(*pats), _build_am_expr_nums(op, edefs, nk, verb, defs)))
     return out
-
+ 
 INTENTS[0:0] = _reg_am_expr()
-
+ 
 INTENTS[0:0] = [
-         Intent("am.buckingham", _p(r"\bbuckingham pi\b"), lambda m, text, session: EngineCommand(
+    Intent("am.buckingham", _p(r"\bbuckingham pi\b"), lambda m, text, session: EngineCommand(
         f'am:buckingham|{{"vars":["m","l","t"],"D":[[1,0,0],[0,1,0],[0,0,1]]}}', 0,
         "Applying the Buckingham Pi theorem.", None)),
     Intent("am.nondim", _p(r"\bnondimensionali[sz]e\b"), lambda m, text, session: EngineCommand(
         f'am:nondim|{{"eq":{jv(clean_expression(extract_between(text, ["nondimensionalize", "nondimensionalise"]) or "x+eps*x^2"))},"vars":["x"],"scales":[1]}}',
         0, "Nondimensionalizing the equation.", None)),
 ]
-
+ 
 INTENTS[0:0] = [
     Intent("am.galton_watson", _p(r"\bgalton.watson\b"), lambda m, text, session: EngineCommand(
         f'am:galton_watson|{{"pk":{find_vector_literal(text) or "[0.2,0.5,0.3]"},"gen":{jnum((find_numbers(text)+["10"])[-1])}}}',

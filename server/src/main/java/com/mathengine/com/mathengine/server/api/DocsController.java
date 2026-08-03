@@ -57,17 +57,53 @@ public class DocsController {
         return entries;
     }
 
-    /** Server's working directory is server/, so docs_kb/ is one level up
-     * — the same locate-relative-to-root pattern ChatbotService uses for
-     * chatbot/cli.py. */
+    /**
+     * Finds docs_kb/knowledge_base.json. Checked in order:
+     * MATHENGINE_DOCS_KB_DIR env var override, then a bounded recursive
+     * search — same rationale/pattern as ChatbotService.locateCli().
+     */
     private static Path locateKb() throws IOException {
-        Path dir = Paths.get("").toAbsolutePath();
-        for (int i = 0; i < 6 && dir != null; i++, dir = dir.getParent()) {
-            Path candidate = dir.resolve("docs_kb").resolve("knowledge_base.json");
+        String override = System.getenv("MATHENGINE_DOCS_KB_DIR");
+        if (override != null && !override.isBlank()) {
+            Path candidate = Paths.get(override, "knowledge_base.json");
             if (Files.isRegularFile(candidate)) return candidate;
+            System.err.println("[DocsController] MATHENGINE_DOCS_KB_DIR is set to '" + override +
+                "' but no knowledge_base.json was found there.");
         }
-        throw new IOException("docs_kb/knowledge_base.json not found near " + Paths.get("").toAbsolutePath());
+
+        Path start = Paths.get("").toAbsolutePath();
+        Path dir = start;
+        for (int i = 0; i < 6 && dir != null; i++, dir = dir.getParent()) {
+            Path found = findKbUnder(dir, 4);
+            if (found != null) return found;
+        }
+        throw new IOException(
+            "docs_kb/knowledge_base.json not found near " + start + " (searched up 6 levels, 4 levels deep each). " +
+            "If your repo doesn't put docs_kb/ near the project root, set the MATHENGINE_DOCS_KB_DIR " +
+            "environment variable to the folder containing knowledge_base.json.");
     }
+
+    private static Path findKbUnder(Path dir, int maxDepth) {
+        if (maxDepth < 0 || dir == null || !Files.isDirectory(dir)) return null;
+        String name = dir.getFileName() != null ? dir.getFileName().toString() : "";
+        if (SKIP_DIRS.contains(name)) return null;
+
+        Path direct = dir.resolve("docs_kb").resolve("knowledge_base.json");
+        if (Files.isRegularFile(direct)) return direct;
+
+        if (maxDepth == 0) return null;
+        try (var stream = Files.list(dir)) {
+            for (Path child : (Iterable<Path>) stream.filter(Files::isDirectory)::iterator) {
+                Path found = findKbUnder(child, maxDepth - 1);
+                if (found != null) return found;
+            }
+        } catch (IOException ignored) {
+        }
+        return null;
+    }
+
+    private static final java.util.Set<String> SKIP_DIRS = java.util.Set.of(
+        ".git", "target", "build", "node_modules", "__pycache__", ".idea", ".vscode");
 
     @GetMapping("/search")
     public ResponseEntity<?> search(@RequestParam String query,

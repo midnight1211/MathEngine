@@ -1642,7 +1642,10 @@
     -fx-background-radius: 16 16 16 4;
     -fx-border-radius: 16 16 16 4;
     -fx-font-size: 0.93em;
-    -fx-wrap-text: truet-timestamp {
+    -fx-wrap-text: true;
+}
+
+.chatbot-timestamp {
     -fx-font-size: 0.72em;
     -fx-text-fill: -text-secondary;
     -fx-padding: 0 4 0 4;

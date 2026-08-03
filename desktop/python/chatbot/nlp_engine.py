@@ -51,7 +51,7 @@ class NLPChatbot:
     def __init__(self) -> None:
         self.sessions = SessionStore()
 
-    def handle(self, session_id: str, message: str) -> ChatResponse:
+    def handle(self, session_id: str, message: str, workspace: Optional[dict] = None) -> ChatResponse:
         session = self.sessions.get(session_id)
         text = (message or "").strip()
 
