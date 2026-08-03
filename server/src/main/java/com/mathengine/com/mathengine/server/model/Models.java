@@ -141,6 +141,59 @@ public final class Models {
         }
     }
 
+
+    public static class ChatRequest {
+	    public String sessionId;
+	    public String message;
+	    public String lastResult;
+	    public com.fasterxml.jackson.databind.JsonNode workspace;
+    }
+
+
+    public static class ChatResponse {
+	    public String reply;
+	    public String engineInput;
+	    public String result;
+	    public String intent;
+	    public double confidence;
+	    public boolean ok;
+	    public String error;
+	    public String actionType;
+	    public String actionTarget;
+	    public com.fasterxml.jackson.databind.JsonNode actionPayload;
+
+	    public static ChatResponse of(String reply, String engineInput, String result, String intent, double confidence) {
+		    ChatResponse r = new ChatResponse();
+		    r.ok = true;
+		    r.reply = reply;
+		    r.engineInput = engineInput;
+		    r.result = result;
+		    r.intent = intent;
+		    r.confidence = confidence;
+		    return r;
+	    }
+
+	    public static ChatResponse action(String reply, String intent, double confidence, String actionType, String actionTarget, com.fasterxml.jackson.databind.JsonNode actionPayload) {
+		    ChatResponse r = new ChatResponse();
+		    r.ok = true;
+		    r.reply = reply;
+		    r.intent = intent;
+		    r.confidence = confidence;
+		    r.actionType = actionType;
+		    r.actionTarget = actionTarget;
+		    r.actionPayload = actionPayload;
+		    return r;
+	    }
+
+	    public static ChatResponse failure(String reply, String error) {
+		    ChatResponse r = new ChatResponse();
+		    r.ok = false;
+		    r.reply = reply;
+		    r.error = error;
+		    return r;
+	    }
+    }
+
     /** POST /api/export */
     public static class ExportRequest {
         public String expression;

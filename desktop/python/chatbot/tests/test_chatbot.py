@@ -1,6 +1,6 @@
 """
-Run with: python -m unittest discover -s chatbot/tests -t chatbot
-(from the repo root), or python tests/test_chatbot.py from chatbot/.
+Run with:  python -m unittest discover -s chatbot/tests -t chatbot
+(from the repo root), or  python tests/test_chatbot.py  from chatbot/.
 No third-party dependencies.
 """
 
@@ -10,7 +10,7 @@ import unittest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from nlp_engine import NLPChatbot # noqa: E402
+from nlp_engine import NLPChatbot  # noqa: E402
 
 
 class TestSmallTalk(unittest.TestCase):
@@ -49,8 +49,8 @@ class TestCalculus(unittest.TestCase):
 
     def test_limit(self):
         r = self.bot.handle("s1", "limit of 1/x as x approaches infinity")
-        self.assertEqual(r.intent, "calculus.limit")
-        self.assertIn("as x->", r.engine_input)
+        self.assertEqual(r.intent, "calculus.limit_inf")
+        self.assertIn('"expr":"1/x"', r.engine_input)
 
     def test_followup_pronoun(self):
         self.bot.handle("s1", "derivative of x^3")
@@ -69,7 +69,7 @@ class TestLinearAlgebra(unittest.TestCase):
         self.assertEqual(r.engine_input, "la:determinant|[[1,2],[3,4]]")
 
     def test_inverse_followup(self):
-        self.bot.handle("s1", "determinant of [[1,2],[3,4]]") 
+        self.bot.handle("s1", "determinant of [[1,2],[3,4]]")
         r = self.bot.handle("s1", "now find its inverse")
         self.assertEqual(r.intent, "la.inverse")
         self.assertIn("la:inverse|", r.engine_input)
@@ -404,6 +404,53 @@ class TestBatch7Statistics(unittest.TestCase):
         self.assertEqual(r.engine_input, 'stat:p_chart|{"defectives":[2,3,1],"n":[50,50,50]}')
 
 
+class TestNewFeatures(unittest.TestCase):
+    def setUp(self):
+        self.bot = NLPChatbot()
+
+    def test_workspace_sync_resolves_pronoun(self):
+        r = self.bot.handle("s1", "what is the determinant of this matrix?",
+                             workspace={"lastExpression": "[[1,2],[2,4]]"})
+        self.assertEqual(r.intent, "la.determinant")
+        self.assertEqual(r.engine_input, "la:determinant|[[1,2],[2,4]]")
+
+    def test_workspace_sync_persists_across_turns(self):
+        self.bot.handle("s1", "hello", workspace={"lastExpression": "[[1,2],[2,4]]"})
+        r = self.bot.handle("s1", "find its inverse")
+        self.assertEqual(r.intent, "la.inverse")
+        self.assertEqual(r.engine_input, "la:inverse|[[1,2],[2,4]]")
+
+    def test_plot_action_detected(self):
+        r = self.bot.handle("s1", "plot sin(x) from -10 to 10")
+        self.assertEqual(r.intent, "action.plot")
+        self.assertIsNotNone(r.action)
+        self.assertEqual(r.action["type"], "SWITCH_TAB")
+        self.assertEqual(r.action["target"], "Graph")
+        self.assertEqual(r.action["payload"]["equation"], "sin(x)")
+
+    def test_non_plot_message_has_no_action(self):
+        r = self.bot.handle("s1", "derivative of x^2")
+        self.assertIsNone(r.action)
+
+    def test_preflight_catches_unbalanced_parens(self):
+        r = self.bot.handle("s1", "sin(2x")
+        self.assertEqual(r.intent, "arithmetic.syntax_error")
+        self.assertIn("character", r.reply)
+        self.assertIsNone(r.engine_input)
+
+    def test_valid_expression_not_flagged(self):
+        r = self.bot.handle("s1", "sin(2*x)")
+        self.assertEqual(r.intent, "arithmetic.passthrough")
+
+    def test_knowledge_lookup_general_question(self):
+        r = self.bot.handle("s1", "what is a taylor series")
+        self.assertEqual(r.intent, "knowledge.lookup")
+        self.assertIn("Taylor Series", r.reply)
+
+    def test_knowledge_lookup_yields_to_instance_computation(self):
+        r = self.bot.handle("s1", "what is the determinant of [[1,2],[3,4]]")
+        self.assertEqual(r.intent, "la.determinant")
+
+
 if __name__ == "__main__":
     unittest.main()
-
