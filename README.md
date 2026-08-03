@@ -1,1221 +1,500 @@
-# Math Engine
+# MathEngine
 
-A cross-device math computation application built entirely in **C++ and Java**, connected via JNI.
-
-- **Desktop** — JavaFX application with rendered LaTeX input/output and full ADA accessibility
-- **Mobile/Tablet** — browser-based UI served over your local WiFi network
-- **Engine** — your week_4 C++ Lexer/Parser/Evaluator, called from Java via a shared native library
-- **Server** — Spring Boot REST API with SQLite user accounts, JWT auth, and history sync
+A full-stack desktop mathematics application built as a senior capstone project at Youngstown State University. MathEngine combines a high-performance C++23 computation engine (exposed via JNI), a JavaFX 21 desktop client, a Spring Boot 3 REST server, and a Python-powered natural-language chatbot into a single cohesive system.
 
 ---
 
 ## Table of Contents
 
-- [Math Engine](#math-engine)
-  - [Table of Contents](#table-of-contents)
-  - [Architecture](#architecture)
-  - [Project Structure](#project-structure)
-  - [Prerequisites](#prerequisites)
-  - [Quick Start](#quick-start)
-    - [Step 1 -- Copy your week\_4 parser headers](#step-1----copy-your-week_4-parser-headers)
-    - [Step 2 -- Build the C++ engine and launch the desktop app](#step-2----build-the-c-engine-and-launch-the-desktop-app)
-    - [Step 3 -- Start the server for phone and tablet access (optional)](#step-3----start-the-server-for-phone-and-tablet-access-optional)
-  - [Build Script Reference](#build-script-reference)
-  - [REST API Reference](#rest-api-reference)
-    - [Auth](#auth)
-    - [Compute](#compute)
-    - [History](#history)
-    - [Preferences](#preferences)
-    - [Export](#export)
-  - [Supported Expressions](#supported-expressions)
-    - [Precision modes](#precision-modes)
-  - [Accounts and Sync](#accounts-and-sync)
-  - [Accessibility Features](#accessibility-features)
-  - [Configuration](#configuration)
-  - [Troubleshooting](#troubleshooting)
-    - [Phone cannot reach the server](#phone-cannot-reach-the-server)
-    - [JNI handshake test](#jni-handshake-test)
+1. [Architecture Overview](#architecture-overview)
+2. [Project Directory](#project-directory)
+3. [Math Modules](#math-modules)
+4. [Expression Syntax](#expression-syntax)
+5. [Chatbot](#chatbot)
+6. [REST API](#rest-api)
+7. [Custom Data Structures (`utils/`)](#custom-data-structures-utils)
+8. [Building and Running](#building-and-running)
+9. [Bug Fixes Applied](#bug-fixes-applied)
+10. [Known Limitations](#known-limitations)
 
 ---
 
-## Architecture
+## Architecture Overview
 
-```txt
-Phone / Tablet (browser)
-    |
-    |  HTTP on local WiFi
-    v
-Spring Boot Server  (port 8080)
-    |  calls via JNI
-    v
-mathengine.dll  <-- C++ Lexer -> Parser -> Evaluator (week_4)
-    ^
-    |  calls via JNI (or HTTP if server is running)
-JavaFX Desktop App
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    JavaFX Desktop Client                    │
+│  MathEngineApp → MainLayout → {Compute, Graph, Chat} tabs   │
+│  InputPanel · OutputPanel · GraphPanel · ChatbotPanel       │
+│  QuickFunctionsPanel · OperationPanel · MathKeyboard        │
+└───────────┬──────────────────────────┬──────────────────────┘
+            │ JNI (mathengine.dll)     │ HTTP/JSON (port 8080)
+            ▼                          ▼
+┌───────────────────────┐   ┌──────────────────────────────────┐
+│    C++ Math Engine    │   │   Spring Boot 3 REST Server      │
+│  CoreEngine.cpp       │   │   /api/compute  /api/history     │
+│  Preprocessor.cpp     │   │   /api/register /api/login       │
+│  12 Math Modules      │   │   /api/preferences               │
+│  utils/ (custom DSA)  │   │   SQLite · JWT auth (72 h)       │
+└───────────────────────┘   └──────────────────────────────────┘
+                                          ▲
+                                          │ HTTP/JSON (stdin/stdout JSON)
+                             ┌────────────┴─────────────┐
+                             │   chatbot.py (Python 3)  │
+                             │   NL intent parsing      │
+                             │   Domain validation      │
+                             │   Conversational memory  │
+                             │   Step-by-step formatting│
+                             └──────────────────────────┘
 ```
 
-The C++ engine is compiled once into a single `mathengine.dll`. The Spring Boot server loads
-it via `System.loadLibrary` and exposes it over HTTP. Every device — desktop, phone, tablet —
-reaches the same engine through the server's REST API. No C++ runs on any client device.
-
-**Guest users** can compute freely without an account. Signing in unlocks history sync,
-preference sync (theme + font size), and result export across all your devices.
+**Data flow for a user expression:**
+1. User types (or selects a quick function) in `InputPanel`
+2. `MathBridge.java` calls the native `CoreEngine::compute(expression)` via JNI
+3. `Preprocessor` converts natural bracket-notation (e.g. `integrate[x^2,0,5]`) to a structured engine prefix (e.g. `calc:integral|{...}`)
+4. `CoreEngine` routes to the appropriate math module
+5. The result (symbolic + numeric) is returned and rendered in `OutputPanel` (LaTeX where possible)
 
 ---
 
-## Project Structure
+## Project Directory
 
-```txt
-mathengine/
-|
-|
-+---desktop
-|   |   \---src
-|   |       \---main
-|   |           \---cpp
-|   |               \---Calculus
-|   |                   |   calculus.vcxproj
-|   |                   |   calculus.vcxproj.filters
-|   |                   |   cmake_install.cmake
-|   |                   |   
-|   |                   +---calculus.dir
-|   |                   |   +---Debug
-|   |                   |   +---MinSizeRel
-|   |                   |   +---Release
-|   |                   |   \---RelWithDebInfo
-|   |                   \---CMakeFiles
-|   |                           generate.stamp
-|   |                           generate.stamp.depend
-|   |                           
-|   +---mathengine.dir
-|   |   +---Debug
-|   |   +---MinSizeRel
-|   |   +---Release
-|   |   \---RelWithDebInfo
-|   \---ZERO_CHECK.dir
-|       +---Debug
-|       +---MinSizeRel
-|       +---Release
-|       \---RelWithDebInfo
-+---build-debug
-|   |   ALL_BUILD.vcxproj
-|   |   ALL_BUILD.vcxproj.filters
-|   |   CMakeCache.txt
-|   |   cmake_install.cmake
-|   |   mathengine.slnx
-|   |   mathengine.vcxproj
-|   |   mathengine.vcxproj.filters
-|   |   ZERO_CHECK.vcxproj
-|   |   ZERO_CHECK.vcxproj.filters
-|   |   
-|   +---ALL_BUILD.dir
-|   |   +---Debug
-|   |   +---MinSizeRel
-|   |   +---Release
-|   |   \---RelWithDebInfo
-|   +---CMakeFiles
-|   |   |   cmake.check_cache
-|   |   |   CMakeConfigureLog.yaml
-|   |   |   generate.stamp
-|   |   |   generate.stamp.depend
-|   |   |   generate.stamp.list
-|   |   |   InstallScripts.json
-|   |   |   TargetDirectories.txt
-|   |   |   
-|   |   +---1682133aee2f7af36bbc2ab94f3edfe7
-|   |   |       generate.stamp.rule
-|   |   |       
-|   |   +---4.3.1
-|   |   |   |   CMakeCXXCompiler.cmake
-|   |   |   |   CMakeDetermineCompilerABI_CXX.bin
-|   |   |   |   CMakeRCCompiler.cmake
-|   |   |   |   CMakeSystem.cmake
-|   |   |   |   VCTargetsPath.txt
-|   |   |   |   VCTargetsPath.vcxproj
-|   |   |   |   
-|   |   |   +---CompilerIdCXX
-|   |   |   |   |   CMakeCXXCompilerId.cpp
-|   |   |   |   |   CompilerIdCXX.exe
-|   |   |   |   |   CompilerIdCXX.vcxproj
-|   |   |   |   |   
-|   |   |   |   +---Debug
-|   |   |   |   |   |   CMakeCXXCompilerId.obj
-|   |   |   |   |   |   CompilerIdCXX.exe.recipe
-|   |   |   |   |   |   
-|   |   |   |   |   \---CompilerIdCXX.tlog
-|   |   |   |   |           CL.command.1.tlog
-|   |   |   |   |           Cl.items.tlog
-|   |   |   |   |           CL.read.1.tlog
-|   |   |   |   |           CL.write.1.tlog
-|   |   |   |   |           CompilerIdCXX.lastbuildstate
-|   |   |   |   |           link.command.1.tlog
-|   |   |   |   |           link.read.1.tlog
-|   |   |   |   |           link.secondary.1.tlog
-|   |   |   |   |           link.write.1.tlog
-|   |   |   |   |           
-|   |   |   |   \---tmp
-|   |   |   +---VCTargetsPath
-|   |   |   |   \---x64
-|   |   |   |       \---Debug
-|   |   |   |           |   VCTargetsPath.recipe
-|   |   |   |           |   
-|   |   |   |           \---VCTargetsPath.tlog
-|   |   |   |                   VCTargetsPath.lastbuildstate
-|   |   |   |                   
-|   |   |   \---x64
-|   |   |       \---Debug
-|   |   \---pkgRedirects
-|   +---Debug
-|   |       mathengine.exp
-|   |       mathengine.lib
-|   |       
-|   +---desktop
-|   |   \---src
-|   |       \---main
-|   |           \---cpp
-|   |               \---Calculus
-|   |                   |   calculus.vcxproj
-|   |                   |   calculus.vcxproj.filters
-|   |                   |   cmake_install.cmake
-|   |                   |   
-|   |                   +---calculus.dir
-|   |                   |   +---Debug
-|   |                   |   |   |   calculus.lib.recipe
-|   |                   |   |   |   Calculus.obj
-|   |                   |   |   |   Convergence.obj
-|   |                   |   |   |   Derivative.obj
-|   |                   |   |   |   Expression.obj
-|   |                   |   |   |   Implicit.obj
-|   |                   |   |   |   Limits.obj
-|   |                   |   |   |   LineIntegral.obj
-|   |                   |   |   |   Multivariable.obj
-|   |                   |   |   |   Numerical.obj
-|   |                   |   |   |   Optimize.obj
-|   |                   |   |   |   Partial.obj
-|   |                   |   |   |   Series.obj
-|   |                   |   |   |   Simplify.obj
-|   |                   |   |   |   SurfaceIntegral.obj
-|   |                   |   |   |   Symbolic.obj
-|   |                   |   |   |   Theorems.obj
-|   |                   |   |   |   VectorOps.obj
-|   |                   |   |   |   Week4Bridge.obj
-|   |                   |   |   |   
-|   |                   |   |   \---calculus.tlog
-|   |                   |   |           calculus.lastbuildstate
-|   |                   |   |           CL.command.1.tlog
-|   |                   |   |           Cl.items.tlog
-|   |                   |   |           CL.read.1.tlog
-|   |                   |   |           CL.write.1.tlog
-|   |                   |   |           CustomBuild.command.1.tlog
-|   |                   |   |           CustomBuild.read.1.tlog
-|   |                   |   |           CustomBuild.write.1.tlog
-|   |                   |   |           Lib-link.read.1.tlog
-|   |                   |   |           Lib-link.write.1.tlog
-|   |                   |   |           Lib.command.1.tlog
-|   |                   |   |           
-|   |                   |   +---MinSizeRel
-|   |                   |   +---Release
-|   |                   |   \---RelWithDebInfo
-|   |                   +---CMakeFiles
-|   |                   |       generate.stamp
-|   |                   |       generate.stamp.depend
-|   |                   |       
-|   |                   \---Debug
-|   |                           calculus.lib
-|   |                           calculus.pdb
-|   |                           
-|   +---mathengine.dir
-|   |   +---Debug
-|   |   |   |   AA.obj
-|   |   |   |   Additional.obj
-|   |   |   |   BasicOps.obj
-|   |   |   |   CA.obj
-|   |   |   |   CAA.obj
-|   |   |   |   CAF.obj
-|   |   |   |   Calculus.obj
-|   |   |   |   CAR.obj
-|   |   |   |   CAS.obj
-|   |   |   |   CASing.obj
-|   |   |   |   CASpecial.obj
-|   |   |   |   Combinatorics.obj
-|   |   |   |   CommonUtils.obj
-|   |   |   |   Congruences.obj
-|   |   |   |   Convergence.obj
-|   |   |   |   CoreEngine.obj
-|   |   |   |   Crypto.obj
-|   |   |   |   DE.obj
-|   |   |   |   DEAdv.obj
-|   |   |   |   Derivative.obj
-|   |   |   |   Determinant.obj
-|   |   |   |   Diophantine.obj
-|   |   |   |   Dispatch.obj
-|   |   |   |   Divisibility.obj
-|   |   |   |   EA.obj
-|   |   |   |   Eigen.obj
-|   |   |   |   EV.obj
-|   |   |   |   evaluator.obj
-|   |   |   |   Expression.obj
-|   |   |   |   Fields.obj
-|   |   |   |   GenFunc.obj
-|   |   |   |   Groups.obj
-|   |   |   |   GT.obj
-|   |   |   |   Implicit.obj
-|   |   |   |   Interp.obj
-|   |   |   |   Inverse.obj
-|   |   |   |   LA.obj
-|   |   |   |   LASpecial.obj
-|   |   |   |   lexer.obj
-|   |   |   |   Limits.obj
-|   |   |   |   LineIntegral.obj
-|   |   |   |   Logic.obj
-|   |   |   |   LS.obj
-|   |   |   |   LUDecomp.obj
-|   |   |   |   MathBridgeJNI.obj
-|   |   |   |   Matrix.obj
-|   |   |   |   Mod.obj
-|   |   |   |   Multivariable.obj
-|   |   |   |   NA.obj
-|   |   |   |   ND.obj
-|   |   |   |   NI.obj
-|   |   |   |   Norms.obj
-|   |   |   |   NTSpecial.obj
-|   |   |   |   NumberTheory.obj
-|   |   |   |   Numerical.obj
-|   |   |   |   Optimize.obj
-|   |   |   |   parser.obj
-|   |   |   |   Partial.obj
-|   |   |   |   Perms.obj
-|   |   |   |   Primes.obj
-|   |   |   |   PRings.obj
-|   |   |   |   PT.obj
-|   |   |   |   P_and_F.obj
-|   |   |   |   QR.obj
-|   |   |   |   RecRel.obj
-|   |   |   |   RF.obj
-|   |   |   |   Rings.obj
-|   |   |   |   RowReduction.obj
-|   |   |   |   Series.obj
-|   |   |   |   Simplify.obj
-|   |   |   |   Solving.obj
-|   |   |   |   Strassen.obj
-|   |   |   |   SurfaceIntegral.obj
-|   |   |   |   SVD.obj
-|   |   |   |   Symbolic.obj
-|   |   |   |   Theorems.obj
-|   |   |   |   vc145.pdb
-|   |   |   |   Week4Bridge.obj
-|   |   |   |   
-|   |   |   +---desktop
-|   |   |   |   \---src
-|   |   |   |       \---main
-|   |   |   |           \---cpp
-|   |   |   |               +---AppliedMath
-|   |   |   |               |   \---DM
-|   |   |   |               +---Calculus
-|   |   |   |               |   \---vectorcalc
-|   |   |   |               +---DIscreteMath
-|   |   |   |               \---Linear_Algebra
-|   |   |   \---mathengine.tlog
-|   |   |           CL.command.1.tlog
-|   |   |           CL.read.1.tlog
-|   |   |           CL.write.1.tlog
-|   |   |           CustomBuild.command.1.tlog
-|   |   |           CustomBuild.read.1.tlog
-|   |   |           CustomBuild.write.1.tlog
-|   |   |           link-cvtres.read.1.tlog
-|   |   |           link-cvtres.write.1.tlog
-|   |   |           link-rc.read.1.tlog
-|   |   |           link-rc.write.1.tlog
-|   |   |           link.command.1.tlog
-|   |   |           link.read.1.tlog
-|   |   |           link.read.2.tlog
-|   |   |           link.read.3.tlog
-|   |   |           link.read.4.tlog
-|   |   |           link.write.1.tlog
-|   |   |           mathengine.lastbuildstate
-|   |   |           unsuccessfulbuild
-|   |   |           
-|   |   +---MinSizeRel
-|   |   +---Release
-|   |   \---RelWithDebInfo
-|   +---x64
-|   |   \---Debug
-|   |       \---ZERO_CHECK
-|   |           |   ZERO_CHECK.recipe
-|   |           |   
-|   |           \---ZERO_CHECK.tlog
-|   |                   CustomBuild.command.1.tlog
-|   |                   CustomBuild.read.1.tlog
-|   |                   CustomBuild.write.1.tlog
-|   |                   ZERO_CHECK.lastbuildstate
-|   |                   
-|   \---ZERO_CHECK.dir
-|       +---Debug
-|       +---MinSizeRel
-|       +---Release
-|       \---RelWithDebInfo
-+---cmake-build-debug
-|   |   .gitignore
-|   |   .ninja_deps
-|   |   .ninja_log
-|   |   build.ninja
-|   |   capstone_stuff.exe
-|   |   CMakeCache.txt
-|   |   cmake_install.cmake
-|   |   compile_commands.json
-|   |   
-|   +---.cmake
-|   |   \---api
-|   |       \---v1
-|   |           +---query
-|   |           |       cache-v2
-|   |           |       cmakeFiles-v1
-|   |           |       codemodel-v2
-|   |           |       toolchains-v1
-|   |           |       
-|   |           \---reply
-|   |                   error-2026-04-15T23-16-00-0425.json
-|   |                   error-2026-04-15T23-18-10-0524.json
-|   |                   error-2026-04-15T23-30-02-0572.json
-|   |                   error-2026-04-15T23-30-23-0549.json
-|   |                   error-2026-04-15T23-30-48-0588.json
-|   |                   
-|   +---CMakeFiles
-|   |   |   clion-Debug-log.txt
-|   |   |   clion-environment.txt
-|   |   |   cmake.check_cache
-|   |   |   CMakeConfigureLog.yaml
-|   |   |   
-|   |   +---4.2.2
-|   |   |   |   CMakeCXXCompiler.cmake
-|   |   |   |   CMakeDetermineCompilerABI_CXX.bin
-|   |   |   |   CMakeRCCompiler.cmake
-|   |   |   |   CMakeSystem.cmake
-|   |   |   |   
-|   |   |   \---CompilerIdCXX
-|   |   |       |   a.exe
-|   |   |       |   CMakeCXXCompilerId.cpp
-|   |   |       |   
-|   |   |       \---tmp
-|   |   \---pkgRedirects
-|   +---desktop
-|   |   \---src
-|   |       \---main
-|   |           \---cpp
-|   |               \---calculus
-|   |                   |   cmake_install.cmake
-|   |                   |   
-|   |                   \---CMakeFiles
-|   |                       \---calculus.dir
-|   |                           +---core
-|   |                           +---differentiation
-|   |                           +---integration
-|   |                           +---limits
-|   |                           +---optimization
-|   |                           +---series
-|   |                           \---vectorcalc
-|   \---Testing
-|       \---Temporary
-|               LastTest.log
-|               
-+---desktop
-|   |   capstone-workspace.code-workspace
-|   |   
-|   \---src
-|       +---main
-|       |   +---cpp
-|       |   |   |   CommonUtils.cpp
-|       |   |   |   CommonUtils.hpp
-|       |   |   |   CoreEngine.cpp
-|       |   |   |   CoreEngine.hpp
-|       |   |   |   MathBridgeJNI.cpp
-|       |   |   |   MathCore.hpp
-|       |   |   |   Preprocessor.cpp
-|       |   |   |   
-|       |   |   +---AbstractAlgebra
-|       |   |   |       AA.cpp
-|       |   |   |       AA.hpp
-|       |   |   |       
-|       |   |   +---AppliedMath
-|       |   |   |       AM.cpp
-|       |   |   |       AM.hpp
-|       |   |   |       
-|       |   |   +---build
-|       |   |   |       AA.obj
-|       |   |   |       AbstractAlgebra_AA.obj
-|       |   |   |       Advanced_Statistics.obj
-|       |   |   |       AM.obj
-|       |   |   |       AppliedMath_AM.obj
-|       |   |   |       CA.obj
-|       |   |   |       Calculus.obj
-|       |   |   |       Calculus_Calculus.obj
-|       |   |   |       Calculus_core_Expression.obj
-|       |   |   |       Calculus_core_Simplify.obj
-|       |   |   |       Calculus_core_Week4Bridge.obj
-|       |   |   |       Calculus_differentiation_Derivative.obj
-|       |   |   |       Calculus_differentiation_Implicit.obj
-|       |   |   |       Calculus_differentiation_Partial.obj
-|       |   |   |       Calculus_integration_Multivariable.obj
-|       |   |   |       Calculus_integration_Numerical.obj
-|       |   |   |       Calculus_integration_Symbolic.obj
-|       |   |   |       Calculus_limits_Limits.obj
-|       |   |   |       Calculus_optimization_Optimize.obj
-|       |   |   |       Calculus_series_Convergence.obj
-|       |   |   |       Calculus_series_Series.obj
-|       |   |   |       Calculus_vectorcalc_LineIntegral.obj
-|       |   |   |       Calculus_vectorcalc_SurfaceIntegral.obj
-|       |   |   |       Calculus_vectorcalc_Theorems.obj
-|       |   |   |       Calculus_vectorcalc_VectorOps.obj
-|       |   |   |       CommonUtils.obj
-|       |   |   |       ComplexAnalysis_CA.obj
-|       |   |   |       Convergence.obj
-|       |   |   |       CoreEngine.obj
-|       |   |   |       DE.obj
-|       |   |   |       DEAdv.obj
-|       |   |   |       Derivative.obj
-|       |   |   |       DiffEq_DE.obj
-|       |   |   |       DiffEq_DEAdv.obj
-|       |   |   |       DIscreteMath_DM.obj
-|       |   |   |       DM.obj
-|       |   |   |       evaluator.obj
-|       |   |   |       Expression.obj
-|       |   |   |       Geom.obj
-|       |   |   |       Geometry_Geom.obj
-|       |   |   |       Implicit.obj
-|       |   |   |       LA.obj
-|       |   |   |       lexer.obj
-|       |   |   |       Limits.obj
-|       |   |   |       Linear_Algebra_LA.obj
-|       |   |   |       LineIntegral.obj
-|       |   |   |       MathBridgeJNI.obj
-|       |   |   |       mathengine.dll
-|       |   |   |       mathengine.exp
-|       |   |   |       mathengine.lib
-|       |   |   |       Multivariable.obj
-|       |   |   |       NA.obj
-|       |   |   |       NumberTheory.obj
-|       |   |   |       NumberTheory_NumberTheory.obj
-|       |   |   |       Numerical.obj
-|       |   |   |       NumericalAnalysis_NA.obj
-|       |   |   |       Optimize.obj
-|       |   |   |       parser.obj
-|       |   |   |       parser_src_week_four_evaluator.obj
-|       |   |   |       parser_src_week_four_lexer.obj
-|       |   |   |       parser_src_week_four_parser.obj
-|       |   |   |       Partial.obj
-|       |   |   |       Preprocessor.obj
-|       |   |   |       ProbabilityTheory_PT.obj
-|       |   |   |       PT.obj
-|       |   |   |       Series.obj
-|       |   |   |       Simplify.obj
-|       |   |   |       Statistics.obj
-|       |   |   |       Statistics_Advanced_Statistics.obj
-|       |   |   |       Statistics_Statistics.obj
-|       |   |   |       SurfaceIntegral.obj
-|       |   |   |       Symbolic.obj
-|       |   |   |       Theorems.obj
-|       |   |   |       VectorOps.obj
-|       |   |   |       Week4Bridge.obj
-|       |   |   |       
-|       |   |   +---Calculus
-|       |   |   |   |   Calculus.cpp
-|       |   |   |   |   Calculus.hpp
-|       |   |   |   |   CMakeLists.txt
-|       |   |   |   |   
-|       |   |   |   +---core
-|       |   |   |   |       Expression.cpp
-|       |   |   |   |       Expression.hpp
-|       |   |   |   |       Simplify.cpp
-|       |   |   |   |       Simplify.hpp
-|       |   |   |   |       Week4Bridge.cpp
-|       |   |   |   |       Week4Bridge.hpp
-|       |   |   |   |       
-|       |   |   |   +---differentiation
-|       |   |   |   |       Derivative.cpp
-|       |   |   |   |       Derivative.hpp
-|       |   |   |   |       Implicit.cpp
-|       |   |   |   |       Implicit.hpp
-|       |   |   |   |       Partial.cpp
-|       |   |   |   |       Partial.hpp
-|       |   |   |   |       
-|       |   |   |   +---integration
-|       |   |   |   |       Multivariable.cpp
-|       |   |   |   |       Multivariable.hpp
-|       |   |   |   |       Numerical.cpp
-|       |   |   |   |       Numerical.hpp
-|       |   |   |   |       Symbolic.cpp
-|       |   |   |   |       Symbolic.hpp
-|       |   |   |   |       
-|       |   |   |   +---limits
-|       |   |   |   |       Limits.cpp
-|       |   |   |   |       Limits.hpp
-|       |   |   |   |       
-|       |   |   |   +---optimization
-|       |   |   |   |       Optimize.cpp
-|       |   |   |   |       Optimize.hpp
-|       |   |   |   |       
-|       |   |   |   +---series
-|       |   |   |   |       Convergence.cpp
-|       |   |   |   |       Convergence.hpp
-|       |   |   |   |       Series.cpp
-|       |   |   |   |       Series.hpp
-|       |   |   |   |       
-|       |   |   |   \---vectorcalc
-|       |   |   |           LineIntegral.cpp
-|       |   |   |           LineIntegral.hpp
-|       |   |   |           SurfaceIntegral.cpp
-|       |   |   |           SurfaceIntegral.hpp
-|       |   |   |           Theorems.cpp
-|       |   |   |           Theorems.hpp
-|       |   |   |           VectorOps.cpp
-|       |   |   |           VectorOps.hpp
-|       |   |   |           
-|       |   |   +---ComplexAnalysis
-|       |   |   |       CA.cpp
-|       |   |   |       CA.hpp
-|       |   |   |       
-|       |   |   +---DiffEq
-|       |   |   |       DE.cpp
-|       |   |   |       DE.hpp
-|       |   |   |       DEAdv.cpp
-|       |   |   |       
-|       |   |   +---DIscreteMath
-|       |   |   |       DM.cpp
-|       |   |   |       DM.hpp
-|       |   |   |       
-|       |   |   +---Geometry
-|       |   |   |       Geom.cpp
-|       |   |   |       Geom.hpp
-|       |   |   |       
-|       |   |   +---include
-|       |   |   |       com_mathengine_jni_MathBridge.h
-|       |   |   |       
-|       |   |   +---Linear_Algebra
-|       |   |   |       LA.cpp
-|       |   |   |       LA.hpp
-|       |   |   |       
-|       |   |   +---NumberTheory
-|       |   |   |       NumberTheory.cpp
-|       |   |   |       NumberTheory.hpp
-|       |   |   |       
-|       |   |   +---NumericalAnalysis
-|       |   |   |       NA.cpp
-|       |   |   |       NA.hpp
-|       |   |   |       
-|       |   |   +---parser
-|       |   |   |   +---include_week_four
-|       |   |   |   |       evaluator.hpp
-|       |   |   |   |       lexer.hpp
-|       |   |   |   |       parser.hpp
-|       |   |   |   |       value.hpp
-|       |   |   |   |       
-|       |   |   |   \---src_week_four
-|       |   |   |           evaluator.cpp
-|       |   |   |           lexer.cpp
-|       |   |   |           parser.cpp
-|       |   |   |           
-|       |   |   +---ProbabilityTheory
-|       |   |   |       PT.cpp
-|       |   |   |       PT.hpp
-|       |   |   |       
-|       |   |   \---Statistics
-|       |   |           Advanced_Statistics.cpp
-|       |   |           Statistics.cpp
-|       |   |           Statistics.hpp
-|       |   |           Statistics_internal.hpp
-|       |   |           
-|       |   +---java
-|       |   |   \---com
-|       |   |       \---mathengine
-|       |   |           +---jni
-|       |   |           |       MathBridge.java
-|       |   |           |       
-|       |   |           +---model
-|       |   |           |       PrecisionMode.java
-|       |   |           |       
-|       |   |           \---ui
-|       |   |                   AccessibilityToolbar.java
-|       |   |                   AuthService.java
-|       |   |                   CalcExpressionBuilder.java
-|       |   |                   DatasetImportPanel.java
-|       |   |                   GraphPanel.java
-|       |   |                   InputPanel.java
-|       |   |                   LatexRenderer.java
-|       |   |                   Launcher.java
-|       |   |                   LoginScreen.java
-|       |   |                   MainLayout.java
-|       |   |                   MathEngineApp.java
-|       |   |                   MathKeyboard.java
-|       |   |                   OperationPanel.java
-|       |   |                   OutputPanel.java
-|       |   |                   QuickFunctionsPanel.java
-|       |   |                   regUser.java
-|       |   |                   SettingsPanel.java
-|       |   |                   ThemeManager.java
-|       |   |                   
-|       |   \---resources
-|       |       \---css
-|       |               base.css
-|       |               dark.css
-|       |               font-large.css
-|       |               font-normal.css
-|       |               font-x-large.css
-|       |               high-contrast.css
-|       |               light.css
-|       |               
-|       \---target
-|           +---classes
-|           \---test-classes
-+---logs
-+---scripts
-|       build_and_run.ps1
-|       Linker_Fixer.ps1
-|       project_health_report.ps1
-|       update_cmake.ps1
-|       
-+---server
-|   |   mathengine.db
-|   |   mathengine.db-shm
-|   |   mathengine.db-wal
-|   |   pom.xml
-|   |   
-|   +---.vscode
-|   |       settings.json
-|   |       
-|   +---src
-|   |   \---main
-|   |       +---java
-|   |       |   \---com
-|   |       |       \---mathengine
-|   |       |           \---com
-|   |       |               \---mathengine
-|   |       |                   \---server
-|   |       |                       |   MathEngineServer.java
-|   |       |                       |   
-|   |       |                       +---api
-|   |       |                       |       AuthController.java
-|   |       |                       |       ComputeController.java
-|   |       |                       |       HistoryController.java
-|   |       |                       |       
-|   |       |                       +---auth
-|   |       |                       |       JwtFilter.java
-|   |       |                       |       JwtService.java
-|   |       |                       |       SecurityConfig.java
-|   |       |                       |       SecurityUtils.java
-|   |       |                       |       
-|   |       |                       +---db
-|   |       |                       |       DatabaseManager.java
-|   |       |                       |       
-|   |       |                       +---engine
-|   |       |                       |       ServerEngineService.java
-|   |       |                       |       
-|   |       |                       \---model
-|   |       |                               Models.java
-|   |       |                               
-|   |       \---resources
-|   |           |   application.properties
-|   |           |   
-|   |           \---static
-|   |               |   index.html
-|   |               |   mobile.css
-|   |               |   mobile.js
-|   |               |   
-|   |               +---css
-|   |               \---js
-|   \---target
-|       +---classes
-|       |   |   application.properties
-|       |   |   
-|       |   +---com
-|       |   |   \---mathengine
-|       |   |       \---server
-|       |   |           |   MathEngineServer.class
-|       |   |           |   
-|       |   |           +---api
-|       |   |           |       AuthController.class
-|       |   |           |       ComputeController.class
-|       |   |           |       HistoryController.class
-|       |   |           |       
-|       |   |           +---auth
-|       |   |           |       JwtFilter.class
-|       |   |           |       JwtService.class
-|       |   |           |       SecurityConfig.class
-|       |   |           |       SecurityUtils.class
-|       |   |           |       
-|       |   |           +---db
-|       |   |           |       DatabaseManager.class
-|       |   |           |       
-|       |   |           +---engine
-|       |   |           |       ServerEngineService.class
-|       |   |           |       
-|       |   |           +---model
-|       |   |           |       Models$AuthResponse.class
-|       |   |           |       Models$ComputeRequest.class
-|       |   |           |       Models$ComputeResponse.class
-|       |   |           |       Models$ExportRequest.class
-|       |   |           |       Models$ExportResponse.class
-|       |   |           |       Models$HistoryEntry.class
-|       |   |           |       Models$LoginRequest.class
-|       |   |           |       Models$Preferences.class
-|       |   |           |       Models$RegisterRequest.class
-|       |   |           |       Models$User.class
-|       |   |           |       Models.class
-|       |   |           |       
-|       |   |           \---service
-|       |   \---static
-|       |           index.html
-|       |           mobile.css
-|       |           mobile.js
-|       |           
-|       +---generated-sources
-|       |   \---annotations
-|       \---maven-status
-|           \---maven-compiler-plugin
-|               \---compile
-|                   \---default-compile
-|                           createdFiles.lst
-|                           inputFiles.lst
-|                           
-+---src
-|   \---main
-|       \---cpp
-|           +---build
-|           |   \---Debug
-|           |           mathengine.pdb
-|           |           
-|           \---parser
-|               \---include_week_four
-|                       evaluator.hpp
-|                       lexer.hpp
-|                       parser.hpp
-|                       value.hpp
-|                       
-\---target
-    +---classes
-    |   +---com
-    |   |   \---mathengine
-    |   |       +---jni
-    |   |       |       MathBridge$1.class
-    |   |       |       MathBridge.class
-    |   |       |       
-    |   |       +---model
-    |   |       |       PrecisionMode.class
-    |   |       |       
-    |   |       \---ui
-    |   |               AccessibilityToolbar.class
-    |   |               AuthService$AuthResult.class
-    |   |               AuthService$ServerResp.class
-    |   |               AuthService.class
-    |   |               CalcExpressionBuilder$1.class
-    |   |               CalcExpressionBuilder.class
-    |   |               DatasetImportPanel$Spacer.class
-    |   |               DatasetImportPanel.class
-    |   |               GraphPanel$PlotEntry.class
-    |   |               GraphPanel.class
-    |   |               InputPanel$Spacer.class
-    |   |               InputPanel.class
-    |   |               LatexRenderer.class
-    |   |               Launcher.class
-    |   |               LoginScreen.class
-    |   |               MainLayout$1.class
-    |   |               MainLayout$Spacer.class
-    |   |               MainLayout.class
-    |   |               MathEngineApp.class
-    |   |               MathKeyboard$Key.class
-    |   |               MathKeyboard.class
-    |   |               OperationPanel$HistoryEntry.class
-    |   |               OperationPanel$Operation.class
-    |   |               OperationPanel$Spacer.class
-    |   |               OperationPanel.class
-    |   |               OutputPanel$Spacer.class
-    |   |               OutputPanel.class
-    |   |               QuickFunctionsPanel.class
-    |   |               regUser.class
-    |   |               SettingsPanel.class
-    |   |               ThemeManager$FontSize.class
-    |   |               ThemeManager$Theme.class
-    |   |               ThemeManager.class
-    |   |               
-    |   \---css
-    |           base.css
-    |           dark.css
-    |           font-large.css
-    |           font-normal.css
-    |           font-x-large.css
-    |           high-contrast.css
-    |           light.css
-    |           
-    +---generated-sources
-    |   \---annotations
-    \---maven-status
-        \---maven-compiler-plugin
-            \---compile
-                \---default-compile
-                        createdFiles.lst
-                        inputFiles.lst
+```
+MathEngine/
+│
+├── build.ps1                        # Top-level build shortcut (forwards to scripts/)
+├── CMakeLists.txt                   # CMake build for the C++ shared library
+├── pom.xml                          # Maven build for the JavaFX client
+├── chatbot.py                       # Python chatbot backend (run by ChatbotPanel.java)
+├── MathCore.hpp                     # Shared scalar/vector/matrix type aliases
+├── CommonUtils.hpp / .cpp           # Shared JSON helpers, parse utilities
+├── CoreEngine.hpp / .cpp            # Top-level expression router
+├── Preprocessor.cpp                 # Natural syntax → structured prefix converter
+├── MathBridgeJNI.cpp                # JNI glue between Java and C++
+│
+├── utils/                           # Custom OO data structures (replaces STL containers)
+│   ├── Utils.hpp                    # ← Single umbrella include for all of utils/
+│   ├── Vec.hpp                      # Dynamic array  (replaces std::vector)
+│   ├── Mat.hpp                      # 2-D matrix     (replaces vector<vector<T>>)
+│   ├── Complex.hpp                  # Complex number (replaces std::complex<double>)
+│   ├── HashMap.hpp                  # Hash map       (replaces std::unordered_map)
+│   ├── OrderedMap.hpp               # Sorted map     (replaces std::map, LLRB BST)
+│   ├── Stack.hpp                    # LIFO stack     (replaces std::stack)
+│   ├── Queue.hpp                    # FIFO queue     (replaces std::queue / deque)
+│   ├── Pair.hpp                     # Value pair     (replaces std::pair)
+│   ├── Tuple3.hpp                   # Value triple   (replaces std::tuple<A,B,C>)
+│   ├── Optional.hpp                 # Optional value (replaces std::optional)
+│   └── Function.hpp                 # Callable       (replaces std::function, SBO)
+│
+├── AbstractAlgebra/
+│   ├── AA.hpp
+│   └── AA.cpp                       # Groups, rings, fields, permutations (45 ops)
+│
+├── AppliedMath/
+│   ├── AM.hpp
+│   └── AM.cpp                       # Laplace/inverse, FFT, optimization, signals (65 ops)
+│
+├── Calculus/
+│   ├── Calculus.hpp / .cpp          # Top-level Calculus dispatcher (39 ops)
+│   ├── core/
+│   │   ├── Expression.hpp / .cpp    # Expression tree: parse, evaluate, toString
+│   │   ├── Simplify.hpp / .cpp      # Symbolic simplification rules
+│   │   └── Week4Bridge.hpp / .cpp   # Bridge to week-4 lexer/parser/evaluator
+│   ├── differentiation/
+│   │   ├── Derivative.hpp / .cpp    # Symbolic differentiation (chain/product/quotient)
+│   │   ├── Implicit.hpp / .cpp      # Implicit differentiation
+│   │   └── Partial.hpp / .cpp       # Partial and higher-order derivatives
+│   ├── integration/
+│   │   ├── Symbolic.hpp / .cpp      # Antiderivatives, definite integrals
+│   │   ├── Numerical.hpp / .cpp     # Romberg, Simpson, Gauss-Legendre
+│   │   └── Multivariable.hpp / .cpp # Double/triple/polar/cylindrical/spherical integrals
+│   ├── limits/
+│   │   └── Limits.hpp / .cpp        # Limit evaluation (L'Hôpital, squeeze)
+│   ├── optimization/
+│   │   └── Optimize.hpp / .cpp      # Critical points, saddle points, Lagrange multipliers
+│   └── series/
+│       ├── Series.hpp / .cpp        # Taylor, Maclaurin, Fourier series
+│       └── Convergence.hpp / .cpp   # Ratio/root/integral convergence tests
+│   └── vectorcalc/
+│       ├── VectorOps.hpp / .cpp     # Gradient, curl, divergence, Jacobian, Hessian
+│       ├── LineIntegral.hpp / .cpp  # Parametric line integrals
+│       ├── SurfaceIntegral.hpp/.cpp # Surface integrals with varZ substitution
+│       └── Theorems.hpp / .cpp      # Green's, Stokes', Divergence theorems
+│
+├── ComplexAnalysis/
+│   ├── CA.hpp
+│   └── CA.cpp                       # Complex functions, residues, contour integrals (26 ops)
+│
+├── DIscreteMath/
+│   ├── DM.hpp
+│   └── DM.cpp                       # Graphs, combinatorics, logic, automata (39 ops)
+│
+├── DiffEq/
+│   ├── DE.hpp / .cpp                # ODE solvers: Euler, RK4, Heun, Adams-Bashforth (68 ops)
+│   └── DEAdv.cpp                    # PDE methods, Laplace-transform solving
+│
+├── Geometry/
+│   ├── Geom.hpp
+│   └── Geom.cpp                     # 2D/3D shapes, dot/cross products, convex hull (50 ops)
+│
+├── Linear_Algebra/
+│   ├── LA.hpp
+│   └── LA.cpp                       # Full linear algebra suite (89 ops)
+│                                    # det, inverse, RREF, rank, nullity, null space
+│                                    # LU, QR, SVD, Jordan, Cholesky decompositions
+│                                    # eigenvalues/vectors, characteristic polynomial
+│                                    # least-squares, Gram-Schmidt, projections
+│                                    # matrix exponential, Cayley-Hamilton
+│
+├── NumberTheory/
+│   ├── NumberTheory.hpp
+│   └── NumberTheory.cpp             # Primes, GCD/LCM, factorization, modular arithmetic (44 ops)
+│
+├── NumericalAnalysis/
+│   ├── NA.hpp
+│   └── NA.cpp                       # Root-finding, interpolation, numerical diff/int (45 ops)
+│                                    # Newton, bisection, secant, regula falsi, Brent
+│                                    # Lagrange/Hermite/Newton DD interpolation
+│                                    # Cubic/linear spline interpolation
+│                                    # Gaussian quadrature (Legendre/Chebyshev/Hermite/Laguerre)
+│                                    # FFT / iFFT (iterative radix-2 Cooley-Tukey)
+│                                    # Linear/iterative system solvers (Gauss-Seidel, SOR, CG)
+│                                    # QR algorithm (numeric eigenvalues)
+│
+├── ProbabilityTheory/
+│   ├── PT.hpp
+│   └── PT.cpp                       # Distributions, Markov chains, inequalities (44 ops)
+│                                    # Normal, binomial, Poisson, t, chi-square, F
+│                                    # Markov chain simulation + steady-state convergence
+│                                    # Markov, Chebyshev, Chernoff, Hoeffding inequalities
+│                                    # Random walks, martingales, Doob decomposition
+│
+├── Statistics/
+│   ├── Statistics.hpp
+│   ├── Statistics.cpp               # Descriptive, inferential, regression (114 ops)
+│   ├── Statistics_internal.hpp
+│   └── Advanced_Statistics.cpp     # ANOVA, multiple regression, logistic regression
+│
+├── parser/                          # Week-4 lexer/parser/evaluator (arithmetic fallback)
+│   ├── include_week_four/
+│   │   ├── lexer.hpp
+│   │   ├── parser.hpp
+│   │   ├── evaluator.hpp
+│   │   └── value.hpp
+│   └── src_week_four/
+│       ├── lexer.cpp
+│       ├── parser.cpp
+│       └── evaluator.cpp
+│
+├── java/com/mathengine/
+│   ├── jni/
+│   │   └── MathBridge.java          # JNI declarations (native compute/evalExact/getVersion)
+│   ├── model/
+│   │   └── PrecisionMode.java       # EXACT / APPROXIMATE enum
+│   └── ui/
+│       ├── MathEngineApp.java        # Application entry point, stage lifecycle
+│       ├── Launcher.java             # JavaFX launcher shim
+│       ├── MainLayout.java           # Root layout: Compute · Graph · Chat tabs
+│       ├── InputPanel.java           # Expression input, operation selector, precision toggle
+│       ├── OutputPanel.java          # Result rendering (LaTeX + plain text)
+│       ├── GraphPanel.java           # 2D/3D function plotter
+│       ├── ChatbotPanel.java         # Chat UI; spawns chatbot.py subprocess
+│       ├── OperationPanel.java       # Math-domain tab bar (Calculus, LA, Stats, …)
+│       ├── QuickFunctionsPanel.java  # One-click example expressions per operation
+│       ├── MathKeyboard.java         # On-screen symbol keyboard
+│       ├── LatexRenderer.java        # JLaTeXMath rendering → ImageView
+│       ├── CalcExpressionBuilder.java# Converts UI selections to engine expressions
+│       ├── DatasetImportPanel.java   # CSV/TSV import for statistics operations
+│       ├── LoginScreen.java          # JWT login / register / guest entry
+│       ├── AuthService.java          # Token storage and REST auth calls
+│       ├── SettingsPanel.java        # Theme, font size, preferences
+│       ├── ThemeManager.java         # Light / Dark / High-Contrast / System theme
+│       ├── AccessibilityToolbar.java # Font-size controls
+│       └── regUser.java              # Register-user form
+│
+├── server/                          # Spring Boot 3 REST server
+│   ├── pom.xml
+│   ├── mathengine.db                # SQLite database (auto-created on first run)
+│   └── src/main/
+│       ├── java/com/mathengine/com/mathengine/server/
+│       │   ├── MathEngineServer.java
+│       │   ├── api/
+│       │   │   ├── AuthController.java      # POST /register, POST /login, GET /me
+│       │   │   ├── ComputeController.java   # POST /compute, GET /engine/status
+│       │   │   └── HistoryController.java   # GET/DELETE /history
+│       │   ├── auth/
+│       │   │   ├── JwtService.java          # HS256 token generation/validation
+│       │   │   ├── JwtFilter.java           # Spring Security filter
+│       │   │   ├── SecurityConfig.java
+│       │   │   └── SecurityUtils.java
+│       │   ├── db/
+│       │   │   └── DatabaseManager.java     # SQLite JDBC connection pool
+│       │   ├── engine/
+│       │   │   └── ServerEngineService.java # Calls native lib via JNI from server side
+│       │   └── model/
+│       │       └── Models.java              # Request/response POJOs
+│       └── resources/
+│           ├── application.properties       # Port 8080, JWT secret, CORS, SQLite path
+│           └── static/
+│               ├── index.html               # Mobile browser interface
+│               ├── mobile.css
+│               └── mobile.js
+│
+├── scripts/
+│   ├── build_and_run.ps1            # Full build: CMake → MSVC → Maven → launch
+│   ├── Linker_Fixer.ps1             # Resolves MSVC JNI linker path issues
+│   ├── update_cmake.ps1             # Regenerates CMakeLists source list
+│   └── project_health_report.ps1   # Prints module status and compile diagnostics
+│
+├── resources/css/
+│   ├── base.css                     # Shared styles + chatbot bubble styles
+│   ├── dark.css                     # Dark theme overrides
+│   ├── light.css                    # Light theme overrides
+│   ├── high-contrast.css
+│   ├── font-normal.css
+│   ├── font-large.css
+│   └── font-x-large.css
+│
+└── include/
+    └── com_mathengine_jni_MathBridge.h   # Auto-generated JNI header
 ```
 
 ---
 
-## Prerequisites
+## Math Modules
 
-| Tool | Version | Notes |
-| ------ | --------- | ------- |
-| JDK | 17 or higher | JAVA_HOME must be set, or java.exe on PATH |
-| Maven | 3.8 or higher | mvn on PATH |
-| Visual Studio | 2019 or higher | "Desktop development with C++" workload |
-| Git | any | optional, for cloning |
+| Module | Prefix | Ops | Highlights |
+|---|---|---|---|
+| **Calculus** | `calc:` | 39 | Symbolic/numeric integrals, derivatives, limits, Taylor/Fourier series, vector calculus, Green's/Stokes'/Divergence theorems |
+| **Linear Algebra** | `la:` | 89 | LU/QR/SVD/Jordan/Cholesky, eigenvalues, null space, RREF, matrix exponential, Cayley-Hamilton, least squares |
+| **Statistics** | `stat:` | 114 | Descriptive stats, hypothesis testing (t/F/chi²/ANOVA), linear/polynomial/logistic/multiple regression, correlation |
+| **Differential Equations** | `de:` | 68 | Euler, RK4, Heun, Adams-Bashforth, Adams-Moulton, BDF, Runge-Kutta-Fehlberg; PDE methods |
+| **Applied Math** | `am:` | 65 | Laplace / inverse-Laplace, optimization, signal processing |
+| **Number Theory** | `nt:` | 44 | Primality testing, factorization, GCD/LCM, Euler's totient, Chinese remainder theorem, modular exponentiation |
+| **Numerical Analysis** | `na:` | 45 | Root-finding (Newton/bisection/secant/Brent), interpolation (Lagrange/Hermite/spline), Gaussian quadrature, FFT/iFFT |
+| **Probability Theory** | `prob:` | 44 | Normal/Binomial/Poisson/t/chi²/F distributions, Markov chains, concentration inequalities |
+| **Geometry** | `geo:` | 50 | 2D/3D shapes, area/volume, dot/cross products, convex hull, projections |
+| **Discrete Math** | `dm:` | 39 | Graph algorithms (BFS/DFS/Dijkstra/Kruskal/Prim), combinatorics, logic, FSM |
+| **Complex Analysis** | `ca:` | 26 | Complex arithmetic, residues, Laurent series, contour integration |
+| **Abstract Algebra** | `aa:` | 45 | Groups, rings, fields, permutation groups, homomorphisms |
 
-The build script auto-detects and initializes the MSVC environment via `vcvarsall.bat` --
-you do not need to run from a Developer PowerShell.
+**Total: ~668 named operations** across 12 modules.
 
 ---
 
-## Quick Start
+## Expression Syntax
 
-### Step 1 -- Copy your week_4 parser headers
+The `Preprocessor` accepts two notation styles:
 
-Copy these four files from your `week_4/include_week_four/` directory into
-`src/main/cpp/parser/include_week_four/`:
-
-```txt
-evaluator.hpp
-lexer.hpp
-parser.hpp
-value.hpp
+**Bracket notation** (natural, recommended):
+```
+integrate[x^2, 0, 5]
+derivative of sin(x)*cos(x)
+eigenvalues of [[4,1],[2,3]]
+spline[0,1,2,3|0,1,4,9|1.5]
+fft[1,1,0,-1,-1,-1,0,1]
+taylor[e^x, 0, 6]
+markov[0.7,0.3;0.4,0.6|0.5,0.5|10]
 ```
 
-The three `.cpp` source files are already present with their `#include` paths corrected.
+**Prefix notation** (direct engine access):
+```
+calc:integral   |{"expr":"x^2","var":"x","a":0,"b":5}
+la:eigen        |[[4,1],[2,3]]
+stat:linear_reg |{"x":"[1,2,3,4]","y":"[2,4,5,8]"}
+na:fft          |{"data":"1,1,0,-1,-1,-1,0,1"}
+na:bisection    |{"f":"x^2-2","x":"x","a":0,"b":2,"tol":1e-10}
+prob:normal_cdf |{"x":1.5,"mu":0,"sigma":1}
+```
 
-### Step 2 -- Build the C++ engine and launch the desktop app
+**Module prefixes:** `calc:` · `la:` · `stat:` · `de:` · `am:` · `nt:` · `na:` · `prob:` · `geo:` · `dm:` · `ca:` · `aa:`
 
-Open PowerShell in the project root and run:
+---
+
+## Chatbot
+
+`chatbot.py` is a Python 3 backend launched as a subprocess by `ChatbotPanel.java`. It communicates over stdin/stdout using newline-delimited JSON.
+
+**Features:**
+
+**A — Natural Language Math Processing**
+- Translates 40+ intent patterns to engine expressions (integrals, derivatives, limits, eigenvalues, regression, root-finding, distributions, equation solving, systems of equations, and more)
+- Asks targeted clarifying questions for incomplete prompts (e.g. "What are the lower and upper bounds?")
+
+**B — Step-by-Step Educational Unpacking**
+- Reformats engine output into labelled sections (symbolic result / numeric value / method)
+- Newton-Raphson, bisection, and secant produce convergence tables (`iter / x_n / f(x_n) / error`)
+- Distributions and regression results include context headers
+
+**C — Conversational Memory & Context**
+- Named variable store: `save this as Velocity` → `$Velocity` in future expressions
+- Pronoun resolution: "it", "that result", "the previous matrix", "the answer"
+- Correction handling: "no, I meant 5 not 3" patches the last intent in place
+- Chained requests: "integrate x² from 0 to 3 then take its derivative"
+- Graph push: "graph that" sends the last expression to the Graph tab
+
+**D — Smart Safety & Guardrails**
+- Division by zero, log/sqrt of invalid arguments, tan at π/2
+- Non-square matrices for ops requiring square matrices; singular matrix inversion
+- Matrix dimension mismatch for multiplication
+- Binomial k > n, negative Poisson λ, probability p outside [0,1]
+- Regression x/y length mismatch; empty FFT input
+
+**E — Concept Explanations**
+- "Why does Newton-Raphson work?" / "Explain eigenvalues" pulls from a 14-topic knowledge base (integral, derivative, limit, eigenvalues, inverse, determinant, Taylor series, Newton-Raphson, GCD, Fourier, Markov chains, rank, null space, regression, bisection, normal distribution, binomial distribution, FFT)
+
+**F — Unit & Format Conversion**
+- Radians ↔ degrees (including symbolic `pi`, `2pi`, `pi/2`)
+- Decimal ↔ fraction (`0.75 as a fraction` → `3/4`)
+- Base conversion (`255 to binary` → `0b11111111`)
+
+---
+
+## REST API
+
+The Spring Boot server runs on `http://localhost:8080` by default.
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| `POST` | `/api/register` | — | Create account (`{username, password}`) |
+| `POST` | `/api/login` | — | Get JWT token (`{username, password}`) |
+| `GET` | `/api/me` | JWT | Current user info |
+| `POST` | `/api/compute` | JWT | Evaluate an expression (`{expression, precisionFlag}`) |
+| `GET` | `/api/engine/status` | — | Native library health check |
+| `GET` | `/api/history` | JWT | Paginated computation history |
+| `DELETE` | `/api/history` | JWT | Clear all history |
+| `DELETE` | `/api/history/{id}` | JWT | Delete one history entry |
+| `GET` | `/api/preferences` | JWT | Load saved theme/font preferences |
+| `PUT` | `/api/preferences` | JWT | Save theme/font preferences |
+
+JWT tokens expire after 72 hours. The server also serves a minimal mobile browser interface at `http://<host>:8080`.
+
+---
+
+## Custom Data Structures (`utils/`)
+
+All STL containers have been replaced with purpose-built implementations in `utils/`. Include a single header to access all of them:
+
+```cpp
+#include "utils/Utils.hpp"
+using namespace utils;
+
+// Drop-in replacements — existing code is unchanged:
+DVec  data = {1.5, 2.5, 3.5};        // was std::vector<double>
+DMat  A(3, 3, 0.0);                   // was std::vector<std::vector<double>>
+Complex z(3.0, 4.0);                  // was std::complex<double>
+HashMap<std::string, int> freq;       // was std::unordered_map
+OrderedMap<int, std::string> labels;  // was std::map
+Stack<int> stk;                       // was std::stack
+Queue<double> q;                      // was std::queue
+Optional<double> result;              // was std::optional
+Function<double(double)> fn;          // was std::function (with SBO ≤ 32 bytes)
+```
+
+| Class | Replaces | Implementation |
+|---|---|---|
+| `Vec<T>` | `std::vector<T>` | Heap-allocated contiguous storage, doubling growth |
+| `Mat<T>` | `vector<vector<T>>` | Row-major with `rows()`, `cols()`, `transpose()`, `identity()` |
+| `Complex` | `std::complex<double>` | Full arithmetic + `sqrt`, `exp`, `log`, `sin`, `cos`, `pow` |
+| `HashMap<K,V>` | `std::unordered_map` | Open-addressing, robin-hood probing, 0.7 load factor |
+| `OrderedMap<K,V>` | `std::map` | Left-leaning red-black BST, O(log n) |
+| `Stack<T>` | `std::stack` | Singly-linked list, O(1) push/pop |
+| `Queue<T>` | `std::queue` / `deque` | Circular ring buffer, O(1) amortized |
+| `Pair<A,B>` | `std::pair` | C++17 structured-binding support |
+| `Tuple3<A,B,C>` | `std::tuple<A,B,C>` | Fixed-arity triple; `GraphEdge` alias predeclared |
+| `Optional<T>` | `std::optional` | Aligned in-place storage, no heap allocation |
+| `Function<R(Args...)>` | `std::function` | SBO (32-byte threshold); large closures heap-allocated via vtable |
+
+---
+
+## Building and Running
+
+### Prerequisites
+
+| Tool | Version | Purpose |
+|---|---|---|
+| MSVC (Visual Studio 2022) | 17.x+ | Compile C++ engine (`/std:c++23`) |
+| CMake | 3.20+ | Generate MSVC project / Makefile |
+| JDK | 21 | Compile and run JavaFX client and Spring Boot server |
+| Maven | 3.8+ | Manage Java dependencies |
+| Python | 3.10+ | Run chatbot backend |
+
+> The C++ engine targets **Windows only** (MSVC, JNI `.dll`). The Java client and Spring Boot server run cross-platform.
+
+### Quick start
 
 ```powershell
+# Clone and enter the project
+git clone <repo-url>
+cd MathEngine
+
+# Full build and launch (compiles C++, builds Java, starts JavaFX app)
 .\build.ps1
-```
 
-This compiles Java, generates the JNI header, compiles `mathengine.dll`, and launches
-the JavaFX desktop application.
-
-### Step 3 -- Start the server for phone and tablet access (optional)
-
-In a second PowerShell window:
-
-```powershell
+# Start the REST server separately (needed for history, auth, and chatbot)
 .\build.ps1 -StartServer
+
+# Skip C++ recompile (faster iteration on Java changes)
+.\build.ps1 -SkipCppBuild
 ```
 
-The server prints something like:
-
-```txt
-========================================
-  Math Engine Server is running!
-----------------------------------------
-  Desktop / localhost:
-    http://localhost:8080
-
-  Other devices on the same WiFi:
-    http://192.168.1.45:8080
-========================================
-```
-
-Open that address in a browser on any phone or tablet connected to the same WiFi network.
-
----
-
-## Build Script Reference
-
-All flags can be combined.
-
-| Command | What it does |
-| --------- | ------------- |
-| `.\build.ps1` | Full build (Java + C++) then launch desktop app |
-| `.\build.ps1 -StartServer` | Full build then start Spring Boot server |
-| `.\build.ps1 -SkipJavaBuild` | Skip `mvn compile`, rebuild DLL only, then run |
-| `.\build.ps1 -SkipCppBuild` | Skip DLL build, recompile Java only, then run |
-| `.\build.ps1 -RunOnly` | Skip all builds, launch desktop app immediately |
-| `.\build.ps1 -RunOnly -StartServer` | Skip all builds, start server immediately |
-| `.\build.ps1 -Compiler mingw` | Force MinGW g++ instead of MSVC |
-| `.\build.ps1 -VerboseOutput` | Print every command before running it |
-
-The script validates all prerequisites before touching any build step, and prints
-a clear error message if something is missing (e.g. headers not copied, DLL not found).
-
----
-
-## REST API Reference
-
-All endpoints are served on port `8080`. Authenticated endpoints require the header:
-
-```txt
-Authorization: Bearer <token>
-```
-
-Tokens are returned by `/api/auth/register` and `/api/auth/login`, and are valid for 72 hours.
-
-### Auth
-
-| Method | Endpoint | Auth | Description |
-| -------- | ---------- | ------ | ------------- |
-| POST | `/api/auth/register` | None | Create a new account |
-| POST | `/api/auth/login` | None | Sign in, receive token |
-| GET | `/api/auth/me` | Required | Get current user profile |
-
-**Register / Login request body:**
-
-```json
-{ "username": "marle", "email": "marle@example.com", "password": "mypassword" }
-```
-
-**Register / Login response:**
-
-```json
-{ "token": "eyJ...", "username": "marle", "theme": "dark", "fontSize": "normal" }
-```
-
-### Compute
-
-| Method | Endpoint | Auth | Description |
-| -------- | ---------- | ------ | ------------- |
-| POST | `/api/compute` | Optional | Evaluate an expression. History saved if signed in. |
-| GET | `/api/engine/status` | None | Check if the C++ native library is loaded |
-
-**Request body:**
-
-```json
-{ "expression": "\\int_0^8 x^2 dx", "precisionFlag": 0, "operation": "integral" }
-```
-
-`precisionFlag`: `0` = symbolic, `1` = numerical
-
-**Response:**
-
-```json
-{
-  "ok": true,
-  "expression": "\\int_0^8 x^2 dx",
-  "result": "512/3  ~  170.6666666667",
-  "operation": "integral",
-  "precisionMode": "symbolic"
-}
-```
-
-Results containing `~` include both a symbolic and a numeric form.
-
-### History
-
-| Method | Endpoint | Auth | Description |
-| -------- | ---------- | ------ | ------------- |
-| GET | `/api/history?limit=50` | Required | Fetch recent history (max 200) |
-| DELETE | `/api/history` | Required | Clear all history |
-| DELETE | `/api/history/{id}` | Required | Delete one entry |
-
-### Preferences
-
-| Method | Endpoint | Auth | Description |
-| -------- | ---------- | ------ | ------------- |
-| GET | `/api/preferences` | Required | Load theme and font size |
-| PUT | `/api/preferences` | Required | Save theme and font size |
-
-**Request / response body:**
-
-```json
-{ "theme": "dark", "fontSize": "normal" }
-```
-
-Valid theme values: `light`, `dark`, `system`, `high-contrast`
-Valid fontSize values: `normal`, `large`, `x-large`
-
-### Export
-
-| Method | Endpoint | Auth | Description |
-| -------- | ---------- | ------ | ------------- |
-| POST | `/api/export` | None | Convert result to an export format |
-
-**Request body:**
-
-```json
-{ "expression": "x^2", "result": "512/3", "format": "latex" }
-```
-
-**Supported formats:**
-
-| Format | Output example |
-| -------- | ---------------- |
-| `latex` | `\[ x^2 = 512/3 \]` |
-| `unicode` | `x² = 512/3` |
-| `plaintext` | `x^2 = 512/3` |
-| `mathml` | `<math xmlns="...">...</math>` |
-
----
-
-## Supported Expressions
-
-Everything the week_4 parser handles, entered as LaTeX or plain text:
-
-```tex
--- Arithmetic
-2 + 3 * 4
-sin(pi/2)
-cos(pi/3) + sin(pi/6)
-sqrt(2^2 + 3^2)
-ln(exp(5))
-2 ^ 8
--(2 + 3)
-pi                    -> symbolic: "pi  ~  3.1415926536"
-e                     -> symbolic: "e   ~  2.7182818285"
-
--- Calculus
-\int_0^8 x^2\,dx
-\frac{d}{dx}[x^3 + sin(x)]
-\lim_{x \to 0} \frac{sin(x)}{x}
-
--- Matrix
-matrix:[[1,2],[3,4]]
-```
-
-### Precision modes
-
-| Mode | Toggle | C++ exactMode | Example output for "pi" |
-| ------ | -------- | -------------- | ------------------------ |
-| Symbolic | left pill | `true` | `pi  ~  3.1415926536` |
-| Numerical | right pill | `false` | `3.1415926536` |
-
----
-
-## Accounts and Sync
-
-Accounts are entirely optional. Guest users can compute, export, and use all five
-operation types without signing in.
-
-**Signing in unlocks:**
-
-- **History sync** -- every computation is saved to the server database and visible on all
-  devices signed in to the same account
-- **Preference sync** -- theme and font size choices are saved server-side and restored
-  automatically on next login from any device
-- **Cross-device continuity** -- start a calculation on your phone, pick it up from history
-  on your desktop
-
-Passwords are hashed with BCrypt (strength 12). Tokens are HMAC-SHA256 signed JWTs
-with a 72-hour expiry. The database is a single SQLite file (`mathengine.db`) in the
-project root, created automatically on first server start.
-
----
-
-## Accessibility Features
-
-All features apply to both the desktop app and the mobile browser UI.
-
-| Feature | Desktop (JavaFX) | Mobile (browser) |
-| --------- | ----------------- | ----------------- |
-| Light theme | Yes | Yes |
-| Dark theme | Yes | Yes |
-| System theme (follows OS) | Yes | Yes |
-| High Contrast (WCAG AAA) | Yes | Yes |
-| Font size: Normal (13/15px) | Yes | Yes |
-| Font size: Large (16/18px) | Yes | Yes |
-| Font size: Extra-large (20/22px) | Yes | Yes |
-| Full keyboard navigation | Yes | Yes |
-| Screen reader labels (ARIA) | Yes | Yes |
-| Theme persisted across restarts | Yes (java.util.prefs) | Yes (localStorage + server sync) |
-| Reduced motion support | -- | Yes (prefers-reduced-motion) |
-| iOS safe-area insets | -- | Yes (env(safe-area-inset-*)) |
-
----
-
-## Configuration
-
-All server configuration is in `server/src/main/resources/application.properties`.
-
-```properties
-# Port the server listens on
-server.port=8080
-
-# Bind address -- 0.0.0.0 lets all devices on the network connect
-# Change to 127.0.0.1 to restrict to localhost only
-server.address=0.0.0.0
-
-# SQLite database file path (relative to project root)
-mathengine.db.path=mathengine.db
-
-# JWT secret -- change this before any real deployment
-# Must be at least 32 characters
-mathengine.jwt.secret=MathEngine-ChangeThis-Secret-Key-Min32Chars!!
-
-# How long tokens stay valid
-mathengine.jwt.expiry-hours=72
-
-# CORS -- use * for local network development
-# Set to specific origin(s) before deploying publicly
-mathengine.cors.allowed-origins=*
-```
-
----
-
-## Troubleshooting
-
-**`FAIL  No C++ compiler found`**
-The build script searches for MSVC via `vswhere.exe`. Make sure Visual Studio is installed
-with the "Desktop development with C++" workload. MinGW (`g++` on PATH) also works as a fallback.
-
-**`FAIL  Cannot build DLL without the parser headers`**
-Copy `evaluator.hpp`, `lexer.hpp`, `parser.hpp`, and `value.hpp` from your `week_4/include_week_four/`
-folder into `src/main/cpp/parser/include_week_four/`.
-
-**`WARNING: Native library not found -- running in Java stub mode`**
-The server started but cannot find `mathengine.dll`. Run `.\build.ps1 -SkipJavaBuild` to
-rebuild the DLL, or run `.\build.ps1 -StartServer` which builds everything first.
-
-### Phone cannot reach the server
-
-- Confirm the phone and PC are on the same WiFi network
-- Check Windows Firewall: allow inbound connections on port 8080
-- Use the IP address printed by the server on startup, not `localhost`
-
-**`java.library.path` errors at runtime**
-The build script sets this automatically. If running Maven directly, add:
+### Manual steps
 
 ```powershell
--Djava.library.path=src/main/cpp/build
+# 1. Build C++ engine
+cmake -S . -B build -G "Visual Studio 17 2022"
+cmake --build build --config Release
+
+# 2. Build and run JavaFX client
+mvn -f pom.xml javafx:run
+
+# 3. Build and run Spring Boot server
+mvn -f server/pom.xml spring-boot:run
 ```
 
-### JNI handshake test
+### Chatbot
 
-```powershell
-cd mathengine
-mvn test -Dtest=MathBridgeTest
-```
+`chatbot.py` is launched automatically by the desktop app when you open the Chat tab. Python 3 must be on your `PATH`. No packages beyond the standard library are required — the chatbot calls the running Spring Boot server at `localhost:8080` for computation.
 
-Sends `PING` from Java to C++, expects `PING::PONG` back. If this passes, the full
-engine pipeline is wired correctly.
+---
 
-## Known Errors and Bugs
+## Bug Fixes Applied
 
-| Error ID     | Description |
-|--------------|-------------|
-| ER00001      | In the Derivative quick function `curl[y,-x,0,x,y,z]`, users receive Computation Error: Unexpected token after expression |
-| ER00002      | In the Derivative quick function `jacobian[x^2+y,x*y,x,y]`, users receive Computation Error: Unexpected token after expression |
-| ER00003      | In the Integral quick function `romberg[sin(x)|x|0|3.14159]`, users receive Computation Error: Unexpected character: $|$ |
-| ER00004      | In the Integral quick function `numerical_int[exp(-x^2)|x|-5|5]`, users receive Computation Error: Unexpected character: "_" |
-| ER00005      | In the Vector quick function `line[x^2+y^2,x,y,t^2,t,0,1]`, users receive Computation Error: Undefined variable: y |
-| ER00006      | In the Vector quick function `surface[x+y+z,x,y,z]`, users receive Computation Error: Undefined variable: z |
-| ER00007      | In the Vector quick function `greens[y,-x,0,1,0,1]`, users receive Computation Error: Undefined variable: z |
-| ER00008      | In the Vector quick function `stokes[y,-x,x,y,z]`, users receive Computation Error: Undefined variable: z |
-| ER00009      | In the Optimize quick function `saddle:x^2-y^2`, users receive Computation Error: Undefined variable: y |
-| ER00010      | In the Optimize quick function `gradient_descent: x^2+y^2,-5,5` users receive Computation Error: Undefined variable: y |
-| ER00011      | In the Probability quick function `markov[0.7,0.3;0.4,0.5|0.6,0.4|5]`, users receive Computation Error: Unknown probability theory operation: markov |
-| ER00012      | In the Numerical Analysis quick function `spline[0,1,2,3|0,1,4,9|1.5]`, users receive Computation Error: cubic spline requires at least 3 data points |
-| ER00013      | In the Linear Algebra quick function `la:null|[[1,2,3],[4,5,6],[7,8,9]]`, users receive Computation Error: Unknown linear algebra operation: null |
-| ER00014      | In the Linear Algebra quick function `la:qr|[[1,1],[1,-1],[0,1]]`, users receive Computation Error: Unknown linear algebra operation: qr |
-| ER00015      | In the Linear Algebra quick function `la:lu|[[2,1,-1],[4,3,-3],[2,-1,2]]`, users receive Computation Error: Unknown linear algebra operation: lu |
-| ER00016      | In the Linear Algebra quick function `la:svd|[[1,2],[3,4],[5,6]]`, users receive Computation Error: Unknown linear algebra operation: svd |
-| ER00017      | In the Linear Algebra quick function `la:eigen|[[4,1],[2,3]]`, users receive Computation Error: Unknown linear algebra operation: eigen |
-| ER00018      | In the Linear Algebra quick function `la:inv|[[2,1],[`, users receive Computation Error: Unknown linear algebra operation: inv |
+The following issues from the original codebase were resolved:
 
-| Bug ID | Description |
-|--------|-------------|
-| B00001 | Dot product and Convex Hull are known to utilize the `circle[]` operation instead of their respective operations |
-| B00002 | Outputted fractions do not seem to be reduced to their simplest form |
-| B00003 | Text output is in 'math mode' but shouldn't be |
+| ID | Component | Root cause | Fix |
+|---|---|---|---|
+| ER00001 | `CoreEngine.cpp` | `splitOp(expression,…)` used raw input instead of preprocessed `expr` in `calc:` block → curl/jacobian fell through to week-4 parser | Changed all `splitOp` calls to use `expr` |
+| ER00002 | `CoreEngine.cpp` | Same as ER00001 (jacobian) | Same fix |
+| ER00003 | `CoreEngine.cpp` | Same as ER00001 (romberg) | Same fix |
+| ER00004 | `CoreEngine.cpp` | Same as ER00001 (numerical_int) | Same fix |
+| ER00005 | `Calculus.cpp` | `line_integral` never received `paramY`; y was unsubstituted | Added `paramY` to Preprocessor + token-substitution in handler |
+| ER00006 | `Calculus.cpp` | `surface_int` ignored `varZ`; z threw "Undefined variable" | Added `varZ` → `(varX+varY)` substitution before double integral |
+| ER00007 | `CoreEngine.cpp` | Same root cause as ER00001 (greens) | Same fix |
+| ER00008 | `CoreEngine.cpp` | Same root cause as ER00001 (stokes) | Same fix |
+| ER00009 | `Preprocessor.cpp` | `saddle:expr` colon syntax not handled | Added colon-syntax handler routing to `calc:optimize_nd` |
+| ER00010 | `Preprocessor.cpp` | `gradient_descent:expr` same as ER00009 | Same fix |
+| ER00011 | `ProbabilityTheory/PT.cpp` | Markov chain operation not implemented | Added `markovChain()` with step simulation and steady-state convergence |
+| ER00012 | `Preprocessor.cpp` | `spline[…]` had no preprocessor handler | Added pipe-argument splitting handler routing to `na:cubic_spline` |
+| ER00013 | `Linear_Algebra/LA.cpp` | `la:null` → "Unknown operation: null" | Added `null` alias dispatching to `nullSpace()` |
+| ER00014 | `Linear_Algebra/LA.cpp` | `la:qr` → "Unknown operation: qr" | Added `qr` alias |
+| ER00015 | `Linear_Algebra/LA.cpp` | `la:lu` → "Unknown operation: lu" | Added `lu` alias |
+| ER00016 | `Linear_Algebra/LA.cpp` | `la:svd` → "Unknown operation: svd" | Added `svd` alias |
+| ER00017 | `Linear_Algebra/LA.cpp` | `la:eigen` → "Unknown operation: eigen" | Added `eigen` alias |
+| ER00018 | `Linear_Algebra/LA.cpp` | `la:inv` → "Unknown operation: inv" | Added `inv` alias |
+| B00001 | `QuickFunctionsPanel.java` | "Convex hull" quick button sent `circle[0,0,5]`; FFT sent `romberg[…]` | Fixed both expressions; added `fft[…]` preprocessor handler |
+| B00002 | `Linear_Algebra/LA.cpp` | `LAResult::format(exactMode)` returned `numerical` in exact mode and `symbolic` in approximate mode — inverted | Swapped: exact mode now returns `symbolic`, approximate returns both |
+| B00003 | `OutputPanel.java` | Plain-text output (e.g. Markov chain state vectors) passed to `LatexRenderer` and displayed incorrectly | Added `looksLikePlainText()` guard before LaTeX rendering |
+
+**Additional fix (discovered during `utils/` compile verification):**
+- `decompJordan()` in `LA.cpp` called `computeEigenvalues()` and `computeGeometricMultiplicity()` — neither existed anywhere in the codebase. Rewrote using the existing `eigenQR()` function and a new `numericRank()` helper for geometric multiplicity.
+
+---
+
+## Known Limitations
+
+- **Windows only** for the C++ engine. The JNI `.dll` is compiled with MSVC; Linux/macOS builds are not supported without replacing the CMake toolchain and JNI glue.
+- **`decompJordan`** produces correct output for diagonalizable matrices and simple Jordan structures, but block size distribution for defective matrices with higher-order chains is approximate.
+- **FFT** operates on real-valued input only (imaginary parts are zero-padded). Complex-input FFT is not yet exposed through the preprocessor.
+- **Chatbot** requires Python 3 on `PATH` and the Spring Boot server running at `localhost:8080`. If either is absent, the Compute and Graph tabs remain fully functional.
+- **Surface integrals** with a third variable substitute `z = x + y` as the default surface equation when no explicit `z(x,y)` is provided.

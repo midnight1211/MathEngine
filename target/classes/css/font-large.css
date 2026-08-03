@@ -1,0 +1,8 @@
+/* Font Size: Large (16px base) */
+.root { font-size: 16px; -fx-font-size: 16px; }
+.latex-field      { font-size: 16px; -fx-font-size: 16px; }
+.result-raw,
+.result-value     { font-size: 20px; -fx-font-size: 20px; }
+.result-approx-value { font-size: 14px; -fx-font-size: 14px; }
+.logo-mark        { font-size: 1.4em; -fx-font-size: 1.4em; }
+.toolbar-btn      { font-size: 0.85em; -fx-font-size: 0.85em; }

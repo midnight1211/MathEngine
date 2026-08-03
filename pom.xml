@@ -8,61 +8,67 @@
     <artifactId>mathengine-ui</artifactId>
     <version>1.0.0</version>
     <packaging>jar</packaging>
+
     <name>Math Engine</name>
 
     <properties>
-        <maven.compiler.source>21</maven.compiler.source>
-        <maven.compiler.target>21</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <maven.compiler.release>21</maven.compiler.release>
         <javafx.version>21.0.1</javafx.version>
-        <native.lib.dir>${project.basedir}/src/main/cpp/build</native.lib.dir>
     </properties>
 
     <dependencies>
+        <!-- JavaFX Controls -->
         <dependency>
             <groupId>org.openjfx</groupId>
             <artifactId>javafx-controls</artifactId>
             <version>${javafx.version}</version>
         </dependency>
-        <dependency>
-            <groupId>org.openjfx</groupId>
-            <artifactId>javafx-graphics</artifactId>
-            <version>${javafx.version}</version>
-        </dependency>
+
+        <!-- JavaFX FXML -->
         <dependency>
             <groupId>org.openjfx</groupId>
             <artifactId>javafx-fxml</artifactId>
             <version>${javafx.version}</version>
         </dependency>
-        <dependency>
-            <groupId>org.openjfx</groupId>
-            <artifactId>javafx-swing</artifactId>
-            <version>${javafx.version}</version>
-        </dependency>
 
-        <dependency>
-            <groupId>org.scilab.forge</groupId>
-            <artifactId>jlatexmath</artifactId>
-            <version>1.0.7</version>
-        </dependency>
-
+        <!-- JUnit 5 Testing -->
         <dependency>
             <groupId>org.junit.jupiter</groupId>
-            <artifactId>junit-jupiter</artifactId>
-            <version>5.10.0</version>
+            <artifactId>junit-jupiter-api</artifactId>
+            <version>5.10.1</version>
             <scope>test</scope>
         </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-engine</artifactId>
+            <version>5.10.1</version>
+            <scope>test</scope>
+    	</dependency>
+	<dependency>
+		<groupId>org.openjfx</groupId>
+		<artifactId>javafx-swing</artifactId>
+		<version>${javafx.version}</version>
+	</dependency>
+	<dependency>
+		<groupId>org.scilab.forge</groupId>
+		<artifactId>jlatexmath</artifactId>
+		<version>1.0.7</version>
+	</dependency>
     </dependencies>
 
     <build>
+        <!-- Corrected source path pointing to desktop/java -->
+        <sourceDirectory>${project.basedir}/desktop/java</sourceDirectory>
+
         <resources>
             <resource>
-                <directory>desktop/src/main/resources</directory>
+                <directory>${project.basedir}/resources</directory>
             </resource>
         </resources>
-        <sourceDirectory>desktop/src/main/java</sourceDirectory>
 
         <plugins>
+            <!-- JavaFX Maven Plugin -->
             <plugin>
                 <groupId>org.openjfx</groupId>
                 <artifactId>javafx-maven-plugin</artifactId>
@@ -70,11 +76,12 @@
                 <configuration>
                     <mainClass>com.mathengine.ui.Launcher</mainClass>
                     <options>
-                        <option>-Djava.library.path=${project.basedir}/desktop/src/main/cpp/build</option>
+                        <option>-Djava.library.path=${project.basedir}/build/lib</option>
                     </options>
                 </configuration>
             </plugin>
 
+            <!-- Maven Compiler Plugin -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
@@ -85,12 +92,48 @@
                 </configuration>
             </plugin>
 
+            <!--
+                Extract the JavaFX JARs' paths into ${javafx.modulepath} so
+                exec-maven-plugin can pass them as -&#45;module-path.  This fixes
+                the "Unsupported JavaFX configuration: classes were loaded from
+                'unnamed module'" warning and the resulting ClassCastExceptions
+                for CSS looked-up colors (-op-*, -bg-elevated, etc.).
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-dependency-plugin</artifactId>
+                <version>3.6.0</version>
+                <executions>
+                    <execution>
+                        <id>build-javafx-modulepath</id>
+                        <phase>initialize</phase>
+                        <goals><goal>build-classpath</goal></goals>
+                        <configuration>
+                            <outputProperty>javafx.modulepath</outputProperty>
+                            <includeGroupIds>org.openjfx</includeGroupIds>
+                            <pathSeparator>${path.separator}</pathSeparator>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!-- Exec Maven Plugin -->
             <plugin>
                 <groupId>org.codehaus.mojo</groupId>
                 <artifactId>exec-maven-plugin</artifactId>
                 <version>3.1.1</version>
                 <configuration>
-                    <mainClass>com.mathengine.ui.Launcher</mainClass>
+                    <executable>java</executable>
+                    <arguments>
+                        <argument>--module-path</argument>
+                        <argument>${javafx.modulepath}</argument>
+                        <argument>--add-modules</argument>
+                        <argument>javafx.controls,javafx.fxml,javafx.swing</argument>
+                        <argument>-Djava.library.path=${project.basedir}/build/lib</argument>
+                        <argument>-classpath</argument>
+                        <classpath/>
+                        <argument>com.mathengine.ui.Launcher</argument>
+                    </arguments>
                 </configuration>
             </plugin>
         </plugins>

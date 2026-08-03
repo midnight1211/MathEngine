@@ -20,7 +20,7 @@
 
     <properties>
         <java.version>21</java.version>
-        <native.lib.dir>${project.basedir}/../src/main/cpp/build</native.lib.dir>
+        <native.lib.dir>${project.basedir}/../build/lib</native.lib.dir>
     </properties>
 
     <dependencies>

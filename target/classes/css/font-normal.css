@@ -1,0 +1,6 @@
+/* Font Size: Normal (13px base) */
+.root { font-size: 13px; -fx-font-size: 13px; }
+.latex-field      { font-size: 13px; -fx-font-size: 13px; }
+.result-raw,
+.result-value     { font-size: 16px; -fx-font-size: 16px; }
+.result-approx-value { font-size: 12px; -fx-font-size: 12px; }
