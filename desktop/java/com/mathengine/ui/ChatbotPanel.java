@@ -5,7 +5,7 @@ import com.mathengine.chatbot.ChatbotBridge.ChatResult;
 import com.mathengine.jni.MathBridge;
 import com.mathengine.model.PrecisionMode;
 import javafx.application.Platform;
-import javafx.concurrent.Task;
+import javafx.concurent.Task;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.control.Button;
@@ -16,11 +16,11 @@ import javafx.scene.layout.Priority;
 import javafx.scene.layout.VBox;
 import javafx.scene.text.Text;
 import javafx.scene.text.TextFlow;
-
+ 
 import java.util.UUID;
 import java.util.function.BiConsumer;
 import java.util.function.Supplier;
-
+ 
 /**
  * ChatbotPanel
  * ─────────────
@@ -49,7 +49,7 @@ import java.util.function.Supplier;
  *      manually-typed computations.
  */
 public class ChatbotPanel extends VBox {
-
+	
 	private final VBox transcript = new VBox(10);
 	private final ScrollPane scrollPane = new ScrollPane(transcript);
 	private final TextField inputField = new TextField();
@@ -124,7 +124,7 @@ public class ChatbotPanel extends VBox {
 	}
 
 	// --- Send flow ---------------------------------------------------------------------
-	
+
 	private void send() {
 		String text = inputField.getText();
 		if (text == null || text.isBlank()) return;
@@ -145,7 +145,12 @@ public class ChatbotPanel extends VBox {
 	}
 
 	private void handleClassified(String originalText, ChatResult classification) {
-		appendAssistantBubble(classification.reply);
+		// Feature: low-confidence indicator — a reply the chatbot itself
+		// isn't sure about (semantic-router fallback, a syntax-error
+		// guess, ...) gets a visually distinct "uncertain" bubble instead
+		// of looking exactly as confident as a matched intent, so the
+		// user knows to double-check it rather than trusting it outright.
+		appendAssistantBubble(classification.reply, classification.confidence < UNCERTAIN_CONFIDENCE_THRESHOLD);
 
 		if (classification.hasAction()) {
 			// Feature 2: a UI action takes priority over any computation -
@@ -186,13 +191,25 @@ public class ChatbotPanel extends VBox {
 	}
 
 	// --- Transcript rendering ----------------------------------------------------------
-	
+
+	/** Below this ChatResult.confidence, a reply is shown as "uncertain"
+	 * (dashed warning border) rather than a normal assistant bubble.
+	 * Matched intents/knowledge lookups sit at 0.8-1.0, plain-expression
+	 * passthrough at 0.6; syntax-error guesses and the semantic-router
+	 * fallback sit at 0.2-0.4, so 0.5 cleanly separates "understood" from
+	 * "best guess" without a Python-side protocol change. */
+	private static final double UNCERTAIN_CONFIDENCE_THRESHOLD = 0.5;
+
 	private void appendUserBubble(String text) {
 		appendBubble(text, Pos.CENTER_RIGHT, "chat-bubble-user");
 	}
 
 	private void appendAssistantBubble(String text) {
-		appendBubble(text, Pos.CENTER_LEFT, "chat-bubble-assistant");
+		appendAssistantBubble(text, false);
+	}
+
+	private void appendAssistantBubble(String text, boolean uncertain) {
+		appendBubble(text, Pos.CENTER_LEFT, uncertain ? "chat-bubble-assistant-uncertain" : "chat-bubble-assistant");
 	}
 
 	private void appendResultBubble(String text) {
@@ -220,3 +237,4 @@ public class ChatbotPanel extends VBox {
 		});
 	}
 }
+

@@ -1626,7 +1626,8 @@
 }
 
 /* ── Message bubbles ──────────────────â───────────── */
-.chatbot-bubble-user {
+.chatbot-bubble-user,
+.chat-bubble-user {
     -fx-background-color: -accent-primary;
     -fx-text-fill: white;
     -fx-background-radius: 16 16 4 16;
@@ -1634,10 +1635,52 @@
     -fx-wrap-text: true;
 }
 
-.chatbot-bubble-bot {
+.chatbot-bubble-bot,
+.chat-bubble-assistant {
     -fx-background-color: -bg-elevated;
     -fx-text-fill: -text-primary;
     -fx-border-color: -brd-subtle;
+    -fx-border-width: 1;
+    -fx-background-radius: 16 16 16 4;
+    -fx-border-radius: 16 16 16 4;
+    -fx-font-size: 0.93em;
+    -fx-wrap-text: true;
+}
+
+/* Semantic router's fallback: same shape as a normal assistant bubble, but
+   a dashed warning-colored border signals "I'm guessing" before the user
+   even reads the text - see ChatbotPanel.appendAssistantBubble(). */
+.chat-bubble-assistant-uncertain {
+    -fx-background-color: -bg-elevated;
+    -fx-text-fill: -text-primary;
+    -fx-border-color: -warning-color;
+    -fx-border-width: 1;
+    -fx-border-style: segments(4, 3);
+    -fx-background-radius: 16 16 16 4;
+    -fx-border-radius: 16 16 16 4;
+    -fx-font-size: 0.93em;
+    -fx-wrap-text: true;
+}
+
+/* A completed engine computation, appended after an assistant reply -
+   visually distinct (accent-colored text, monospace) so the actual answer
+   stands out from the conversational framing above it. */
+.chat-bubble-result {
+    -fx-background-color: -bg-elevated;
+    -fx-text-fill: -accent-primary;
+    -fx-border-color: -accent-primary;
+    -fx-border-width: 1;
+    -fx-background-radius: 16 16 16 4;
+    -fx-border-radius: 16 16 16 4;
+    -fx-font-family: "JetBrains Mono", "Consolas", monospace;
+    -fx-font-size: 0.93em;
+    -fx-wrap-text: true;
+}
+
+.chat-bubble-error {
+    -fx-background-color: -error-bg;
+    -fx-text-fill: -error-color;
+    -fx-border-color: -error-border;
     -fx-border-width: 1;
     -fx-background-radius: 16 16 16 4;
     -fx-border-radius: 16 16 16 4;
