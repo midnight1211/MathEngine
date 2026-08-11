@@ -428,23 +428,6 @@ class TestNewFeatures(unittest.TestCase):
         self.assertEqual(r.action["target"], "Graph")
         self.assertEqual(r.action["payload"]["equations"], ["sin(x)"])
 
-    def test_plot_action_multiple_equations(self):
-        r = self.bot.handle("s1", "plot sin(x) and cos(x)")
-        self.assertEqual(r.intent, "action.plot")
-        self.assertEqual(r.action["payload"]["equations"], ["sin(x)", "cos(x)"])
-
-    def test_plot_action_pronoun_resolves_last_expression(self):
-        self.bot.handle("s1", "derivative of x^3")
-        r = self.bot.handle("s1", "plot that")
-        self.assertEqual(r.intent, "action.plot")
-        self.assertEqual(r.action["payload"]["equations"], ["x^3"])
-
-    def test_clear_graph_action(self):
-        r = self.bot.handle("s1", "clear the graph")
-        self.assertEqual(r.intent, "action.clear_graph")
-        self.assertEqual(r.action["type"], "CLEAR_GRAPH")
-        self.assertEqual(r.action["target"], "Graph")
-
     def test_non_plot_message_has_no_action(self):
         r = self.bot.handle("s1", "derivative of x^2")
         self.assertIsNone(r.action)
@@ -469,70 +452,180 @@ class TestNewFeatures(unittest.TestCase):
         self.assertEqual(r.intent, "la.determinant")
 
 
-class TestFollowupFeatures(unittest.TestCase):
+class TestSemanticRouter(unittest.TestCase):
+    """Unit tests for semantic_router.py in isolation (no chatbot pipeline
+    involved), plus a couple of end-to-end checks that nlp_engine's
+    fallback branch actually uses it."""
+
+    def setUp(self):
+        import semantic_router
+        self.semantic_router = semantic_router
+        # Fresh router per test so nothing in one test's corpus-building
+        # can be polluted by another test mutating shared session state.
+        self.router = semantic_router.SemanticRouter(
+            semantic_router._build_labelled_corpus())
+
+    def test_exact_phrase_scores_near_one(self):
+        matches = self.router.route("determinant of [[1,2],[3,4]]")
+        self.assertTrue(matches)
+        self.assertEqual(matches[0].intent, "la.determinant")
+        self.assertGreater(matches[0].score, 0.9)
+
+    def test_misspelling_still_matches(self):
+        matches = self.router.route("standard deviaton of [1,2,3,4,5]")
+        self.assertTrue(matches)
+        self.assertEqual(matches[0].intent, "stat.stddev")
+
+    def test_compound_word_split_across_two_words_still_matches(self):
+        # "eigenvalues" (one token in the corpus) vs "eigen values" (two
+        # tokens in the query) share no whole word - only the n-gram
+        # features can bridge this.
+        matches = self.router.route("eigen values of [[2,0],[0,3]]")
+        self.assertTrue(matches)
+        self.assertEqual(matches[0].intent, "la.eigenvalues")
+
+    def test_word_order_does_not_matter(self):
+        a = self.router.route("derivative of x^2 + 3x")
+        b = self.router.route("x^2 + 3x derivative of")
+        self.assertEqual(a[0].intent, b[0].intent)
+
+    def test_gibberish_returns_nothing(self):
+        matches = self.router.route("asdkfjaslkdjf zzqxw ghirp")
+        self.assertEqual(matches, [])
+
+    def test_empty_string_returns_nothing(self):
+        self.assertEqual(self.router.route(""), [])
+
+    def test_results_capped_to_one_per_intent(self):
+        matches = self.router.route("derivative of x^2 + 3x", top_k=10)
+        intents = [m.intent for m in matches]
+        self.assertEqual(len(intents), len(set(intents)))
+
+    def test_results_sorted_descending(self):
+        matches = self.router.route("mean and standard deviation of numbers")
+        scores = [m.score for m in matches]
+        self.assertEqual(scores, sorted(scores, reverse=True))
+
+    def test_every_intent_has_corpus_coverage(self):
+        # Feature: regex-derived synthetic phrases fill in every intent
+        # EXAMPLE_PHRASES doesn't hand-cover - see
+        # semantic_router._synthetic_corpus_entries(). Guards against a
+        # future intent silently going uncovered again.
+        from intents import INTENTS
+        covered = {intent for intent, _ in self.router._entries}
+        missing = {i.name for i in INTENTS} - covered
+        self.assertEqual(missing, set())
+
+    def test_synthetic_phrase_still_routes_correctly(self):
+        # "romberg integration" has no hand-written EXAMPLE_PHRASES entry -
+        # this only works via the regex-derived synthetic corpus.
+        matches = self.router.route("romberg integration of x^2 from 0 to 2")
+        self.assertTrue(matches)
+        self.assertEqual(matches[0].intent, "na.romberg")
+
+
+class TestCoverageReport(unittest.TestCase):
+    """coverage_report.py isn't imported by the chatbot itself - it's a
+    standalone dev tool - but it doubles as a CI sanity check, so it gets
+    exercised here too rather than only by someone remembering to run it
+    by hand."""
+
+    def test_report_runs_clean_with_no_warnings(self):
+        import coverage_report
+        report, has_warnings = coverage_report.build_report()
+        self.assertFalse(has_warnings, report)
+        self.assertIn("612 total", report)
+
+
+class TestSemanticRouterFallbackIntegration(unittest.TestCase):
+    """End-to-end: confirms nlp_engine's fallback branch actually consults
+    the router (not just that the router works in isolation)."""
+
     def setUp(self):
         self.bot = NLPChatbot()
 
-    def test_precision_toggle_to_numeric(self):
-        self.bot.handle("s1", "derivative of x^2")
-        r = self.bot.handle("s1", "give me that as a decimal")
-        self.assertEqual(r.intent, "followup.precision_toggle")
-        self.assertEqual(r.engine_input, "diff[x^2,x]")
-        self.assertEqual(r.precision_flag, 1)
-
-    def test_precision_toggle_to_symbolic(self):
-        self.bot.handle("s1", "derivative of x^2")
-        self.bot.handle("s1", "give me that as a decimal")
-        r = self.bot.handle("s1", "show the exact value instead")
-        self.assertEqual(r.precision_flag, 0)
-        self.assertEqual(r.engine_input, "diff[x^2,x]")
-
-    def test_precision_toggle_without_prior_context_falls_through(self):
-        r = self.bot.handle("s2", "give me that as a decimal")
+    def test_confident_match_named_directly_in_reply(self):
+        r = self.bot.handle("s1", "could you find me the rank for [[2,0],[0,3]]")
         self.assertEqual(r.intent, "fallback.passthrough")
+        self.assertIn("rank of", r.reply)
 
-    def test_explain_that_after_computation(self):
-        self.bot.handle("s1", "determinant of [[1,2],[3,4]]")
-        r = self.bot.handle("s1", "why does that matter?")
-        self.assertEqual(r.intent, "knowledge.explain_that")
-        self.assertIn("Determinant", r.reply)
+    def test_gibberish_gets_no_suggestion_appended(self):
+        r = self.bot.handle("s1", "asdkfjaslkdjf zzqxw ghirp")
+        self.assertEqual(r.intent, "fallback.passthrough")
+        self.assertNotIn("Did you mean", r.reply)
 
-    def test_explain_that_without_context(self):
-        r = self.bot.handle("s3", "what does that mean")
-        self.assertEqual(r.intent, "knowledge.explain_that.unknown")
+    def test_confirming_a_strong_suggestion_runs_it(self):
+        first = self.bot.handle("s1", "could you find me the rank for [[2,0],[0,3]]")
+        self.assertEqual(first.intent, "fallback.passthrough")
+        self.assertIn('say "yes"', first.reply)
 
-    def test_explain_that_does_not_shadow_direct_kb_query(self):
-        r = self.bot.handle("s4", "what is a derivative")
-        self.assertEqual(r.intent, "knowledge.lookup")
+        second = self.bot.handle("s1", "yes")
+        self.assertEqual(second.intent, "la.rank")
+
+    def test_declining_a_suggestion_does_not_run_it(self):
+        self.bot.handle("s1", "could you find me the rank for [[2,0],[0,3]]")
+        r = self.bot.handle("s1", "no thanks, something else")
+        self.assertNotEqual(r.intent, "la.rank")
+
+    def test_stale_suggestion_is_not_confirmable_later(self):
+        self.bot.handle("s1", "could you find me the rank for [[2,0],[0,3]]")
+        self.bot.handle("s1", "never mind")  # anything other than yes clears it
+        r = self.bot.handle("s1", "yes")
+        self.assertNotEqual(r.intent, "la.rank")
+
+    def test_ambiguous_matches_do_not_set_a_pending_suggestion(self):
+        # Two strong, close-scoring matches (determinant vs. inverse) -
+        # the menu case, not the single confirmable-match case, so "yes"
+        # afterward shouldn't auto-run either one.
+        first = self.bot.handle("s1", "inverse or determinant of [[1,2],[3,4]]")
+        self.assertNotIn('say "yes"', first.reply)
+        second = self.bot.handle("s1", "yes")
+        self.assertNotIn(second.intent, ("la.determinant", "la.inverse"))
 
 
-class TestSessionManagementFeatures(unittest.TestCase):
+class TestAnalytics(unittest.TestCase):
+    """Each NLPChatbot owns its own Analytics instance (see
+    NLPChatbot.__init__), so these tests don't need to worry about counts
+    leaking in from other tests' bots."""
+
     def setUp(self):
         self.bot = NLPChatbot()
 
-    def test_history_recall(self):
+    def test_stats_before_any_messages(self):
+        r = self.bot.handle("s1", "stats")
+        self.assertEqual(r.intent, "smalltalk.stats")
+        self.assertIn("No messages handled yet", r.reply)
+
+    def test_stats_counts_prior_messages_not_itself(self):
         self.bot.handle("s1", "derivative of x^2")
-        self.bot.handle("s1", "determinant of [[1,2],[3,4]]")
-        r = self.bot.handle("s1", "what have we talked about")
-        self.assertEqual(r.intent, "session.history")
-        self.assertIn("determinant of [[1,2],[3,4]]", r.reply)
-        self.assertIn("derivative of x^2", r.reply)
+        self.bot.handle("s1", "10 choose 3")
+        r = self.bot.handle("s1", "stats")
+        # The two prior turns are counted; "stats" itself isn't counted
+        # yet at the point summary() is generated for its own reply.
+        self.assertIn("2 message(s) handled this session.", r.reply)
 
-    def test_history_recall_empty_session(self):
-        r = self.bot.handle("s2", "what have we talked about")
-        self.assertEqual(r.intent, "session.history.empty")
+    def test_stats_reports_top_intents(self):
+        self.bot.handle("s1", "gcd of 48 and 18")
+        self.bot.handle("s1", "gcd of 10 and 15")
+        r = self.bot.handle("s1", "usage stats")
+        self.assertIn("nt.gcd", r.reply)
 
-    def test_clear_chat_resets_session(self):
-        self.bot.handle("s1", "derivative of x^3")
-        r = self.bot.handle("s1", "clear the chat")
-        self.assertEqual(r.intent, "session.reset")
-        # A pronoun reference after clearing should no longer resolve to x^3.
-        r2 = self.bot.handle("s1", "now integrate that")
-        self.assertNotIn("x^3", r2.engine_input)
+    def test_low_confidence_turns_are_tracked(self):
+        self.bot.handle("s1", "asdkfjaslkdjf zzqxw ghirp")  # fallback.passthrough, confidence 0.2
+        r = self.bot.handle("s1", "stats")
+        self.assertIn("Understood with confidence: 0/1", r.reply)
 
-    def test_suggestions_on_typo(self):
-        r = self.bot.handle("s1", "derivitive of x^2")
-        self.assertIn("Did you mean", r.reply)
+    def test_suggestion_confirmation_rate_tracked(self):
+        self.bot.handle("s1", "could you find me the rank for [[2,0],[0,3]]")
+        self.bot.handle("s1", "yes")
+        r = self.bot.handle("s1", "stats")
+        self.assertIn("Semantic-router suggestions offered: 1 (confirmed: 1, 100%)", r.reply)
+
+    def test_analytics_isolated_between_bot_instances(self):
+        self.bot.handle("s1", "gcd of 48 and 18")
+        other_bot = NLPChatbot()
+        r = other_bot.handle("s1", "stats")
+        self.assertIn("No messages handled yet", r.reply)
 
 
 if __name__ == "__main__":

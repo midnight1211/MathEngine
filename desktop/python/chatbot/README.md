@@ -211,7 +211,7 @@ Two documented-but-not-yet-wired extension points:
   what this chatbot uses instead). Worth fixing in the preprocessor
   itself at some point.
 
-## Beyond intent coverage: four integration features
+## Beyond intent coverage: six integration features
 
 ### 1. Workspace Sync (context-aware desktop integration)
 `ChatbotPanel.captureWorkspaceState()`-equivalent (`MainLayout.captureWorkspaceState()`
@@ -225,14 +225,11 @@ message, not just as a follow-up to something typed into the chat.
 
 ### 2. Chat-Driven Actions (shared state modification)
 `actions.py` detects requests that should change the UI rather than
-compute a result — "plot/graph/visualize ..." (supports multiple
-functions in one request and pronoun references like "plot that") and
-"clear the graph" — and returns a structured action instead of an
-`engine_input`:
+compute a result — currently "plot/graph/visualize ..." — and returns
+a structured action instead of an `engine_input`:
 ```json
 {"type": "SWITCH_TAB", "target": "Graph",
- "payload": {"equations": ["sin(x)", "cos(x)"], "range": [-10, 10], "is3d": false}}
-{"type": "CLEAR_GRAPH", "target": "Graph", "payload": {}}
+ "payload": {"equation": "sin(x)", "range": [-10, 10], "is3d": false}}
 ```
 `ChatbotPanel.setOnAction(...)` (desktop) and the server's
 `ChatResponse.actionType/actionTarget/actionPayload` fields carry this
@@ -265,6 +262,105 @@ that references a concrete instance ("what is the determinant of
 **this** matrix") correctly falls through to intent matching instead
 of the knowledge base, since that's a computation, not a definition
 request.
+
+### 5. Semantic Router (order/synonym-tolerant fallback matching)
+`semantic_router.py` replaces the old difflib-based "did you mean?"
+fallback with a small TF-IDF + cosine-similarity model over a bag of
+whole-word and character-n-gram features. It kicks in only after the
+612-entry regex `INTENTS` registry has already failed to match, and it
+never builds or executes an `EngineCommand` itself — guessing the
+right payload shape for an intent whose own regex didn't fire would be
+more likely to produce a wrong answer than a helpful one. Instead it
+finds the *closest known operation* and phrases the reply around it,
+with confidence-graduated wording:
+
+  * one strong, unambiguous match → named directly:
+    `"could you tell me the eigen values of [[2,0],[0,3]]"` →
+    *"Did you mean something like `eigenvalues of [[2,0],[0,3]]`?"*
+  * a few plausible matches → offered as a short menu
+  * nothing close → falls back to the generic help text, silently
+
+Because it scores on bag-of-words + n-gram overlap rather than
+character-sequence similarity (difflib's approach), it survives word
+reordering, filler words, and the misspellings/compounding that
+naturally happen in typed math requests — `"standard deviaton"` still
+strongly matches `"standard deviation"`, and `"eigen values"` (two
+words) still matches the corpus's `"eigenvalues"` (one word), neither
+of which a whole-word-only comparison can see. It's stdlib-only
+(`re`, `math`, `collections`) for the same reason `entities.py` is: no
+pip dependency belongs in the one piece of an otherwise fully offline
+C++/Java/PowerShell build.
+
+Its training corpus isn't hand-labelled: it's built lazily by running
+every `suggestions.EXAMPLE_PHRASES` entry through the real
+`NLPChatbot.handle()` pipeline and keeping whatever intent each phrase
+actually resolved to. That means the router's notion of "what phrase
+maps to what intent" can never silently drift out of sync with the
+live dispatch order — if `nlp_engine.py`'s pipeline changes, the
+corpus re-derives itself from the new behavior the next time it's
+built.
+
+`EXAMPLE_PHRASES` only hand-covers a few dozen of the 612 `INTENTS`
+entries, though — every other intent had zero corpus representation
+and could never be suggested no matter how close a query came, no
+matter how the router itself was tuned. `_synthetic_corpus_entries()`
+closes that gap completely: for every intent `EXAMPLE_PHRASES` doesn't
+reach, it strips the regex syntax out of that intent's own trigger
+pattern and uses the literal words left behind as a phrase — e.g.
+`\bromberg integration\b.*\bfrom\b...` becomes `"romberg integration
+from to"`. That's a lower-fidelity phrase than a hand-written sentence
+(no natural grammar, occasional leftover noise word), but it gets every
+one of the 612 intents at least *some* representation for free, with no
+ongoing maintenance burden — the moment a new `Intent` is added to
+`intents.py`, it's already covered the next time the corpus builds,
+with no separate example sentence required. `test_every_intent_has_corpus_coverage`
+in `tests/test_chatbot.py` guards this.
+
+### 6. Suggestion Confirmation Loop ("yes" runs the semantic router's guess)
+When the semantic router (feature 5) finds one strong, unambiguous
+match, `nlp_engine.py` doesn't just describe it — it also stores that
+phrase as `session.pending_suggestion`. If the *very next* message is a
+short affirmative ("yes", "yeah", "sure", "do it", "go ahead", ...; see
+`followups.is_affirmative`), the chatbot actually runs the suggested
+phrase instead of trying and failing to parse "yes" as its own math
+request:
+
+```
+> could you tell me the eigen values of [[2,0],[0,3]]
+< I couldn't match that to a specific operation... Did you mean
+  something like "eigenvalues of [[2,0],[0,3]]"? (say "yes" and I'll run it)
+> yes
+< Got it — running "eigenvalues of [[2,0],[0,3]]". Computing the
+  eigenvalues of [[2,0],[0,3]].
+```
+
+This only fires for a *single* strong match — when the router turns up
+several close, plausible candidates instead (the "did you mean one of
+these: ..." menu case), no `pending_suggestion` is stored, since
+guessing which of several candidates a bare "yes" meant would be worse
+than just asking. A `pending_suggestion` also only survives exactly one
+turn: any reply other than a recognized affirmative clears it, so a
+stale suggestion from several messages ago can never be accidentally
+confirmed later by an unrelated "yes" showing up in conversation.
+
+### 7. Usage Analytics ("stats" / "usage stats")
+`analytics.py` tracks, in memory, for the life of the subprocess: how
+many messages have been handled, a per-intent hit count, how many
+replies fell below a confidence threshold, and the semantic router's
+suggestion-offered/confirmed rate. Asking the chatbot for `"stats"`
+(or `"usage stats"`, `"show me the stats"`, `"how am I doing?"`)
+returns a human-readable summary built from these counters — useful
+during development for seeing which of the 612 `INTENTS` entries are
+actually earning their keep in a real conversation versus which never
+fire, and how often the semantic router has to guess at all.
+
+Each `NLPChatbot` instance owns its own `Analytics` object (not a
+process-wide singleton), so counts from one chat session never bleed
+into another chatbot instance's `"stats"` reply. Nothing is written to
+disk by default; setting the `MATHENGINE_CHATBOT_ANALYTICS_LOG`
+environment variable to a file path additionally appends each turn as
+one JSON line to that file, for a developer who wants a persistent
+record across subprocess restarts.
 
 
 
