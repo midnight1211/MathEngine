@@ -426,7 +426,24 @@ class TestNewFeatures(unittest.TestCase):
         self.assertIsNotNone(r.action)
         self.assertEqual(r.action["type"], "SWITCH_TAB")
         self.assertEqual(r.action["target"], "Graph")
-        self.assertEqual(r.action["payload"]["equation"], "sin(x)")
+        self.assertEqual(r.action["payload"]["equations"], ["sin(x)"])
+
+    def test_plot_action_multiple_equations(self):
+        r = self.bot.handle("s1", "plot sin(x) and cos(x)")
+        self.assertEqual(r.intent, "action.plot")
+        self.assertEqual(r.action["payload"]["equations"], ["sin(x)", "cos(x)"])
+
+    def test_plot_action_pronoun_resolves_last_expression(self):
+        self.bot.handle("s1", "derivative of x^3")
+        r = self.bot.handle("s1", "plot that")
+        self.assertEqual(r.intent, "action.plot")
+        self.assertEqual(r.action["payload"]["equations"], ["x^3"])
+
+    def test_clear_graph_action(self):
+        r = self.bot.handle("s1", "clear the graph")
+        self.assertEqual(r.intent, "action.clear_graph")
+        self.assertEqual(r.action["type"], "CLEAR_GRAPH")
+        self.assertEqual(r.action["target"], "Graph")
 
     def test_non_plot_message_has_no_action(self):
         r = self.bot.handle("s1", "derivative of x^2")
@@ -450,6 +467,72 @@ class TestNewFeatures(unittest.TestCase):
     def test_knowledge_lookup_yields_to_instance_computation(self):
         r = self.bot.handle("s1", "what is the determinant of [[1,2],[3,4]]")
         self.assertEqual(r.intent, "la.determinant")
+
+
+class TestFollowupFeatures(unittest.TestCase):
+    def setUp(self):
+        self.bot = NLPChatbot()
+
+    def test_precision_toggle_to_numeric(self):
+        self.bot.handle("s1", "derivative of x^2")
+        r = self.bot.handle("s1", "give me that as a decimal")
+        self.assertEqual(r.intent, "followup.precision_toggle")
+        self.assertEqual(r.engine_input, "diff[x^2,x]")
+        self.assertEqual(r.precision_flag, 1)
+
+    def test_precision_toggle_to_symbolic(self):
+        self.bot.handle("s1", "derivative of x^2")
+        self.bot.handle("s1", "give me that as a decimal")
+        r = self.bot.handle("s1", "show the exact value instead")
+        self.assertEqual(r.precision_flag, 0)
+        self.assertEqual(r.engine_input, "diff[x^2,x]")
+
+    def test_precision_toggle_without_prior_context_falls_through(self):
+        r = self.bot.handle("s2", "give me that as a decimal")
+        self.assertEqual(r.intent, "fallback.passthrough")
+
+    def test_explain_that_after_computation(self):
+        self.bot.handle("s1", "determinant of [[1,2],[3,4]]")
+        r = self.bot.handle("s1", "why does that matter?")
+        self.assertEqual(r.intent, "knowledge.explain_that")
+        self.assertIn("Determinant", r.reply)
+
+    def test_explain_that_without_context(self):
+        r = self.bot.handle("s3", "what does that mean")
+        self.assertEqual(r.intent, "knowledge.explain_that.unknown")
+
+    def test_explain_that_does_not_shadow_direct_kb_query(self):
+        r = self.bot.handle("s4", "what is a derivative")
+        self.assertEqual(r.intent, "knowledge.lookup")
+
+
+class TestSessionManagementFeatures(unittest.TestCase):
+    def setUp(self):
+        self.bot = NLPChatbot()
+
+    def test_history_recall(self):
+        self.bot.handle("s1", "derivative of x^2")
+        self.bot.handle("s1", "determinant of [[1,2],[3,4]]")
+        r = self.bot.handle("s1", "what have we talked about")
+        self.assertEqual(r.intent, "session.history")
+        self.assertIn("determinant of [[1,2],[3,4]]", r.reply)
+        self.assertIn("derivative of x^2", r.reply)
+
+    def test_history_recall_empty_session(self):
+        r = self.bot.handle("s2", "what have we talked about")
+        self.assertEqual(r.intent, "session.history.empty")
+
+    def test_clear_chat_resets_session(self):
+        self.bot.handle("s1", "derivative of x^3")
+        r = self.bot.handle("s1", "clear the chat")
+        self.assertEqual(r.intent, "session.reset")
+        # A pronoun reference after clearing should no longer resolve to x^3.
+        r2 = self.bot.handle("s1", "now integrate that")
+        self.assertNotIn("x^3", r2.engine_input)
+
+    def test_suggestions_on_typo(self):
+        r = self.bot.handle("s1", "derivitive of x^2")
+        self.assertIn("Did you mean", r.reply)
 
 
 if __name__ == "__main__":

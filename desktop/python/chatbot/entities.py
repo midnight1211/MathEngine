@@ -1,10 +1,10 @@
 """
 entities.py
-------------
+────────────
 Stdlib-only helpers for pulling structured pieces (numbers, expressions,
 matrices, variable lists) out of a natural-language math request, and for
 safely encoding them into the JSON payloads CoreEngine.cpp expects.
- 
+
 No third-party NLP libraries are used on purpose: the rest of the project
 is a fully offline C++/Java desktop app built with PowerShell scripts, so
 adding a pip dependency (spaCy, nltk, ...) would be the one piece of the
@@ -18,18 +18,18 @@ from __future__ import annotations
 import re
 from typing import List, Optional
 
-NUM_RE = re.compile(r"[-+]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?")
+NUM_RE = re.compile(r"(?<![a-zA-Z])[-+]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?")
 
-# Words that map onto with operators/constants when users type them out.
+# Words that map onto math operators/constants when users type them out.
 WORD_NUMBERS = {
-        "zero": "0", "one": "1", "two": "2", "three": "3", "four": "4",
-        "five": "5", "six": "6", "seven": "7", "eight": "8", "nine": "9",
-        "ten": "10",
+    "zero": "0", "one": "1", "two": "2", "three": "3", "four": "4",
+    "five": "5", "six": "6", "seven": "7", "eight": "8", "nine": "9",
+    "ten": "10",
 }
 
 
 def jv(s: str) -> str:
-    """Escape a raw string as a JSON string literal (mirrors Preprocessor.cpp:jv)."""
+    """Escape a raw string as a JSON string literal (mirrors Preprocessor.cpp::jv)."""
     out = ['"']
     for c in s:
         if c == '"':
@@ -87,14 +87,14 @@ def strip_matrix_literal(text: str) -> str:
 
 def matrix_literal_to_json_rows(lit: str) -> str:
     """
-    Normalizes a matrix literal typed with commas/semicolons/spaces into the
-    "[[..],[..]]" form the C++ engine's parseMat expecs. Accepts:
-        [[1,2],[3,4]]       (already correct)
-        [1,2;3,4]           (MATLAB-style rows)
-        1,2;3,4             (bare, no brackets)
+    Normalises a matrix literal typed with commas/semicolons/spaces into the
+    "[[..],[..]]" form the C++ engine's parseMat expects. Accepts:
+        [[1,2],[3,4]]      (already correct)
+        [1,2;3,4]          (MATLAB-style rows)
+        1,2;3,4            (bare, no brackets)
     """
     s = lit.strip()
-    if s.startswith("[["):
+    if s.startswith("[[") :
         return s
     inner = s
     if inner.startswith("[") and inner.endswith("]"):
@@ -114,9 +114,9 @@ def find_vector_literal(text: str) -> Optional[str]:
 
 
 EXPR_KEYWORD_STRIP = re.compile(
-        r"^(what is|what's|whats|find|compute|calculate|evaluate|solve|"
-        r"can you|please|could you|i need|i want|help me)\b[:,]?\s*",
-        re.IGNORECASE,
+    r"^(what is|what's|whats|find|compute|calculate|evaluate|solve|"
+    r"can you|please|could you|i need|i want|help me)\b[:,]?\s*",
+    re.IGNORECASE,
 )
 
 
@@ -124,8 +124,8 @@ def clean_expression(expr: str) -> str:
     """Trim filler words/punctuation around an extracted expression fragment."""
     e = expr.strip().strip(".,;:!? ")
     e = EXPR_KEYWORD_STRIP.sub("", e).strip()
-    # Users often say "x^2" as "x squared" - leave real rewriting to callers;
-    # here we only strip surrrounding noise, we don't rewrite math semantics.
+    # Users often say "x^2" as "x squared" — leave real rewriting to callers;
+    # here we only strip surrounding noise, we don't rewrite math semantics.
     return e
 
 
@@ -142,7 +142,7 @@ def first_var(expr: str) -> str:
 
 
 def split_top_level(s: str) -> List[str]:
-    """Split on commas that aren't nested inside (), [], or {} - e.g. for
+    """Split on commas that aren't nested inside (), [], or {} — e.g. for
     turning "sin(x*y), cos(x*y)" or "x, y, z" into a clean list."""
     parts = []
     depth = 0

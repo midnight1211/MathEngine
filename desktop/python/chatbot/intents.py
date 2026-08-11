@@ -124,6 +124,9 @@ def _mat(text: str, session) -> str:
         return matrix_literal_to_json_rows(lit)
     if session.last_matrix:
         return session.last_matrix
+    ws = session.workspace_matrix()
+    if ws:
+        return ws
     return "[[]]"
 
 
@@ -448,6 +451,13 @@ def _build_stat_reg_diag(op: str, verb: str):
 
 PLAIN_EXPR_RE = re.compile(r"^[0-9a-zA-Z_+\-*/^().,\s!%]+$")
 _HAS_OPERATOR_OR_DIGIT = re.compile(r"[\d+\-*/^()!%]")
+_LONG_WORD_RE = re.compile(r"[a-zA-Z]{4,}")
+_KNOWN_MATH_WORDS = {
+    "sin", "cos", "tan", "sqrt", "log", "ln", "exp", "abs", "mod",
+    "floor", "ceil", "asin", "acos", "atan", "sinh", "cosh", "tanh",
+    "pi", "inf", "infinity", "log2", "log10", "cot", "sec", "csc",
+    "gcd", "lcm", "max", "min", "round", "sign", "trunc",
+}
 
 
 def looks_like_plain_expression(text: str) -> bool:
@@ -455,10 +465,18 @@ def looks_like_plain_expression(text: str) -> bool:
     "sin(pi/2)", a bare variable. False for ordinary English sentences that
     happen to avoid punctuation, e.g. "please do the thing with the stuff" —
     those have no digits/operators and more than a couple of words, so they
-    read as prose rather than a formula."""
+    read as prose rather than a formula. Also false for a typo'd request
+    like "derivitive of x^2" — it contains a digit (via "x^2"), but also an
+    unrecognized 4+-letter word that isn't a known math function, which is
+    a strong signal of prose-with-an-embedded-fragment rather than an
+    actual formula; letting it through here would mean it never reaches
+    the "did you mean...?" suggestion path (see suggestions.py)."""
     t = text.strip()
     if not t or not PLAIN_EXPR_RE.fullmatch(t):
         return False
+    for word in _LONG_WORD_RE.findall(t):
+        if word.lower() not in _KNOWN_MATH_WORDS:
+            return False
     if _HAS_OPERATOR_OR_DIGIT.search(t):
         return True
     return len(t.split()) <= 2
@@ -920,7 +938,7 @@ NUMLIKE = r"[-+]?\d+(?:\.\d+)?"
 INTENTS: List[Intent] = [
 
 
-    # ─Calculus (batch 2) ───────────────────────────────────────────────
+    # ── Calculus (batch 2) ───────────────────────────────────────────────
     Intent("calculus.log_diff", _p(
         rf"\blogarithmic derivative of\s+{E}$",
     ), _build_calc_log_diff),
@@ -945,7 +963,7 @@ INTENTS: List[Intent] = [
         rf"\blimit of\s+{E}\s+as\s+{V}\s*(?:approaches|->|goes to|→)\s*.+\s+from the right$",
     ), _build_calc_limit_directed("limit_right", "Taking the right-hand limit")),
 
-    # ── Linear Algebra (batch 2) ───────────────────────────────â─
+    # ── Linear Algebra (batch 2) ─────────────────────────────────────────
     Intent("la.add", _p(r"\badd\b.*\[\[")),
     Intent("la.subtract", _p(r"\bsubtract\b.*\[\[")),
     Intent("la.power", _p(r"\bmatrix\b.*\braised to\b", r"\bmatrix power\b")),
@@ -962,7 +980,7 @@ INTENTS: List[Intent] = [
     Intent("la.decomp_lu", _p(r"\blu decomposition\b")),
     Intent("la.decomp_qr", _p(r"\bqr decomposition\b")),
 
-    # ── Statistics (batch 2) ────────────────────────────────────────────
+    # ── Statistics (batch 2) ─────────────────────────────────────────────
     Intent("stat.skewness", _p(r"\bskewness of\b")),
     Intent("stat.kurtosis", _p(r"\bkurtosis of\b")),
     Intent("stat.percentile", _p(r"\bpercentile of\b", r"\d+(?:st|nd|rd|th) percentile\b")),
@@ -975,6 +993,7 @@ INTENTS: List[Intent] = [
     Intent("stat.normal_cdf", _p(r"\bnormal cdf\b", r"\bnormal distribution cdf\b")),
     Intent("stat.binomial_pmf", _p(r"\bbinomial (?:pmf|probability)\b")),
     Intent("stat.poisson_pmf", _p(r"\bpoisson (?:pmf|probability)\b")),
+
     # ── Number Theory (batch 2) ──────────────────────────────────────────
     Intent("nt.extended_gcd", _p(r"\bextended (?:gcd|euclidean)\b")),
     Intent("nt.divisors", _p(r"\bdivisors of\b", r"\bfactors of\b")),
@@ -989,7 +1008,7 @@ INTENTS: List[Intent] = [
     Intent("nt.bell", _p(r"\bbell number\b")),
     Intent("nt.stirling1", _p(r"\bstirling number of the first kind\b")),
     Intent("nt.stirling2", _p(r"\bstirling number of the second kind\b")),
- 
+
     # ── Discrete Math (batch 2) ──────────────────────────────────────────
     Intent("dm.derangements", _p(r"\bderangements? of\b")),
     Intent("dm.bfs", _p(r"\bbfs\b", r"\bbreadth.first search\b")),
@@ -997,7 +1016,7 @@ INTENTS: List[Intent] = [
     Intent("dm.bipartite", _p(r"\bis\b.*\bbipartite\b")),
     Intent("dm.floyd_warshall", _p(r"\ball.pairs shortest path\b", r"\bfloyd.warshall\b")),
     Intent("dm.prim_mst", _p(r"\bminimum spanning tree\b", r"\bprim'?s? mst\b")),
- 
+
     # ── Geometry (batch 2) ───────────────────────────────────────────────
     Intent("geo.distance_3d", _p(
         r"\bdistance between\b.*\(\s*[-\d.]+\s*,\s*[-\d.]+\s*,\s*[-\d.]+\s*\)"
@@ -1006,7 +1025,7 @@ INTENTS: List[Intent] = [
     Intent("geo.slope", _p(r"\bslope (?:of|between)\b"), _build_geo_slope),
     Intent("geo.polygon_perim", _p(r"\bperimeter of\b.*\bpolygon\b")),
     Intent("geo.sphere", _p(r"\bequation of\b.*\bsphere\b", r"\bsphere with center\b"), _build_geo_sphere),
- 
+
     # ── Complex Analysis (batch 2) ───────────────────────────────────────
     Intent("ca.complex_pow", _p(r"\braise\b.*\bcomplex\b.*\bto\b", r"\bcomplex number\b.*\bpower\b"), _build_ca_complex_pow),
     Intent("ca.complex_exp", _p(r"\bexponential of\b.*\bcomplex\b", r"\be\^.*i\b")),
@@ -1016,7 +1035,7 @@ INTENTS: List[Intent] = [
     Intent("ca.residue", _p(
         rf"\bresidue of\s+{E}\s+at\b",
     ), _build_ca_residue),
- 
+
     # ── Numerical Analysis (batch 2) ─────────────────────────────────────
     Intent("na.newton", _p(
         rf"\bnewton'?s? method\b(?:\s+(?:on|for))?\s+{E}\s+(?:starting (?:at|near)|near|from)\s+(?:x0\s*=\s*)?(?P<x0>{NUMLIKE})$",
@@ -1025,7 +1044,7 @@ INTENTS: List[Intent] = [
         rf"\btrapezoidal rule\b\s+(?:of\s+)?{E}\s+from\s+(?P<a>{NUMLIKE})\s+to\s+(?P<b>{NUMLIKE})$",
         rf"\btrapezoidal(?:ly)? integrate\s+{E}\s+from\s+(?P<a>{NUMLIKE})\s+to\s+(?P<b>{NUMLIKE})$",
     ), _build_na_trapezoidal),
- 
+
     # ── DiffEq (batch 2) ─────────────────────────────────────────────────
     Intent("de.euler", _p(
         rf"\beuler'?s? method\b.*?dy/dt\s*=\s*{E}\s+(?:with\s+)?y\(0\)\s*=\s*(?P<y0>{NUMLIKE})(?:.*?\bto\s+t\s*=\s*(?P<t1>{NUMLIKE}))?$",
@@ -1033,24 +1052,24 @@ INTENTS: List[Intent] = [
     Intent("de.rk2", _p(
         rf"\brk2\b.*?dy/dt\s*=\s*{E}\s+(?:with\s+)?y\(0\)\s*=\s*(?P<y0>{NUMLIKE})(?:.*?\bto\s+t\s*=\s*(?P<t1>{NUMLIKE}))?$",
     ), _build_de_numeric_method("rk2", "RK2")),
- 
+
     # ── Abstract Algebra (batch 2) ───────────────────────────────────────
     Intent("aa.ring_zn", _p(r"\bring\s+z/?\d+z?\b", r"\bring of integers mod\b"), _build_aa_ring_zn),
     Intent("aa.perm_order", _p(r"\border of\b.*\bpermutation\b")),
     Intent("aa.perm_inverse", _p(r"\binverse of\b.*\bpermutation\b")),
- 
+
     # ── Batch 4 ───────────────────────────────────────────────────────────
     Intent("am.logistic_growth", _p(r"\blogistic growth\b")),
     Intent("am.sir", _p(r"\bsir (?:model|epidemic)\b", r"\bepidemic model\b")),
     Intent("am.lotka_volterra", _p(r"\blotka.volterra\b", r"\bpredator.prey\b")),
     Intent("am.random_walk", _p(r"\brandom walk\b")),
- 
+
     Intent("prob.mgf_normal", _p(r"\bmgf\b.*\bnormal\b", r"\bmoment generating function\b.*\bnormal\b")),
     Intent("prob.mgf_binomial", _p(r"\bmgf\b.*\bbinomial\b")),
     Intent("prob.mgf_poisson", _p(r"\bmgf\b.*\bpoisson\b")),
     Intent("prob.gamblers_ruin", _p(r"\bgambler'?s? ruin\b")),
     Intent("prob.chebyshev_ineq", _p(r"\bchebyshev'?s? inequality\b")),
- 
+
     Intent("de.linear_first", _p(
         rf"\blinear first.order (?:ode|equation)\b.*?P\s*=\s*(?P<P>.+?)\s*,\s*Q\s*=\s*(?P<Q>.+?)$",
         rf"\bdy/dx\s*\+\s*\((?P<P>.+?)\)\s*y\s*=\s*(?P<Q>.+?)$",
@@ -1062,23 +1081,23 @@ INTENTS: List[Intent] = [
     Intent("dm.cartesian", _p(r"\bcartesian product\b"), _build_dm_cartesian),
     Intent("dm.topo_sort", _p(r"\btopological sort\b", r"\btopo sort\b")),
     Intent("dm.chromatic", _p(r"\bchromatic number\b")),
- 
+
     Intent("nt.prime_pi", _p(r"\bprime.counting\b")),
     Intent("nt.mobius", _p(r"\bmobius function\b", r"\bmöbius function\b")),
     Intent("nt.legendre", _p(r"\blegendre symbol\b")),
     Intent("nt.jacobi_symbol", _p(r"\bjacobi symbol\b")),
     Intent("nt.partition", _p(r"\bpartition function\b", r"\bnumber of partitions of\b")),
- 
+
     Intent("aa.dihedral", _p(r"\bdihedral group\b")),
     Intent("aa.quotient_group", _p(r"\bquotient group\b")),
     Intent("aa.gaussian_int", _p(r"\bgaussian integer\b")),
- 
+
     Intent("stat.normal_pdf", _p(r"\bnormal pdf\b", r"\bnormal density\b")),
     Intent("stat.normal_qf", _p(r"\bnormal quantile\b", r"\binverse normal cdf\b")),
     Intent("stat.binomial_cdf", _p(r"\bbinomial cdf\b")),
     Intent("stat.poisson_cdf", _p(r"\bpoisson cdf\b")),
     Intent("stat.geometric_pmf", _p(r"\bgeometric (?:pmf|probability)\b")),
- 
+
     # ── Calculus ──────────────────────────────────────────────────────────
     Intent("calculus.derivative", _p(
         rf"\b(?:derivative|differentiate)\s+of\s+{E}(?:\s+with respect to\s+{V})?$",
@@ -1086,41 +1105,41 @@ INTENTS: List[Intent] = [
         rf"\bdifferentiate\s+{E}$",
         rf"^{E}\s*'\s*$",
     ), _build_derivative),
- 
+
     Intent("calculus.partial", _p(
         rf"\bpartial derivative of\s+{E}\s+with respect to\s+{V}$",
         rf"\b∂/∂{V}\s*\[?{E}\]?$",
     ), _build_partial),
- 
+
     Intent("calculus.gradient", _p(
         rf"\bgradient of\s+{E}$",
         rf"\bgrad\s*\[?{E}\]?$",
     ), _build_gradient),
- 
+
     Intent("calculus.integral_definite", _p(
         rf"\bintegrate\s+{E}\s+from\s+(?P<a>{NUMLIKE})\s+to\s+(?P<b>{NUMLIKE})$",
         rf"\bintegral of\s+{E}\s+from\s+(?P<a>{NUMLIKE})\s+to\s+(?P<b>{NUMLIKE})$",
         rf"∫.*?{E}.*?from\s+(?P<a>{NUMLIKE})\s+to\s+(?P<b>{NUMLIKE})$",
     ), _build_integral_def),
- 
+
     Intent("calculus.integral_indefinite", _p(
         rf"\b(?:integrate|antiderivative of|integral of)\s+{E}$",
     ), _build_integral_indef),
- 
+
     Intent("calculus.limit", _p(
         rf"\blimit of\s+{E}\s+as\s+{V}\s*(?:approaches|->|goes to|→)\s*(?P<point>.+)$",
     ), _build_limit),
- 
+
     Intent("calculus.taylor", _p(
         rf"\btaylor series of\s+{E}(?:\s+(?:around|at)\s+(?P<center>{NUMLIKE}))?(?:\s+(?:order|degree)\s+(?P<order>\d+))?$",
         rf"\bmaclaurin series of\s+{E}(?:\s+(?:order|degree)\s+(?P<order>\d+))?$",
     ), _build_taylor),
- 
+
     Intent("calculus.optimize", _p(
         rf"\b(?:maximum and minimum|critical points|maxima and minima) of\s+{E}$",
         rf"\boptimi[sz]e\s+{E}$",
     ), _build_optimize),
- 
+
     # ── Linear Algebra ───────────────────────────────────────────────────
     Intent("la.determinant", _p(r"\bdeterminant of\b", r"\bdet\(?\s*\[")),
     Intent("la.inverse", _p(r"\binverse\b", r"\binvert\b")),
@@ -1131,7 +1150,7 @@ INTENTS: List[Intent] = [
     Intent("la.eigen", _p(r"\beigenvalues?\b", r"\beigenvectors?\b")),
     Intent("la.solve", _p(r"\bsolve\b.*\bsystem\b", r"\bsolve\b.*\bAx\s*=\s*b\b")),
     Intent("la.multiply", _p(r"\bmultiply\b.*\bmatri", r"\bmatrix multiplication\b")),
- 
+
     # ── Statistics ────────────────────────────────────────────────────────
     Intent("stat.mean", _p(r"\b(?:mean|average) of\b")),
     Intent("stat.median", _p(r"\bmedian of\b")),
@@ -1142,7 +1161,7 @@ INTENTS: List[Intent] = [
     Intent("stat.linear_reg", _p(r"\blinear regression\b", r"\bline of best fit\b", r"\bregress\b")),
     Intent("stat.covariance", _p(r"\bcovariance\b")),
     Intent("stat.markov_steady", _p(r"\bsteady.state\b.*\bmarkov\b", r"\bmarkov chain\b.*\bsteady\b")),
- 
+
     # ── Number Theory ─────────────────────────────────────────────────────
     Intent("nt.gcd", _p(r"\b(?:gcd|greatest common divisor|greatest common factor)\b")),
     Intent("nt.lcm", _p(r"\b(?:lcm|least common multiple)\b")),
@@ -1151,20 +1170,20 @@ INTENTS: List[Intent] = [
     Intent("nt.fibonacci", _p(r"\bfibonacci\b")),
     Intent("nt.mod_pow", _p(r"\b\d+\s*\^\s*\d+\s*mod\s*\d+\b", r"\bmodular exponent")),
     Intent("nt.euler_phi", _p(r"\beuler'?s? (?:totient|phi)\b")),
- 
+
     # ── Discrete Math ─────────────────────────────────────────────────────
     Intent("dm.combinations", _p(r"\bcombinations?\b", r"\bchoose\b", r"\bnCr\b")),
     Intent("dm.permutations", _p(r"\bpermutations?\b", r"\bnPr\b")),
     Intent("dm.dijkstra", _p(r"\bshortest path\b", r"\bdijkstra\b")),
- 
+
     # ── Geometry ──────────────────────────────────────────────────────────
     Intent("geo.distance", _p(r"\bdistance between\b.*\bpoints?\b", r"\bdistance between\s*\(")),
     Intent("geo.triangle_area", _p(r"\barea of\b.*\btriangle\b")),
     Intent("geo.circle", _p(r"\bequation of\b.*\bcircle\b", r"\bcircle with center\b")),
- 
+
     # ── Complex Analysis ─────────────────────────────────────────────────
     Intent("ca.roots", _p(r"\b(?P<n>\d+)(?:th|rd|st|nd)?\s+roots? of\b", r"\ball roots of\b")),
- 
+
     # ── Numerical Analysis ───────────────────────────────────────────────
     Intent("na.bisection", _p(
         rf"\b(?:root of|solve|zero of)\s+{E}\s+(?:on|in|between)\s*(?P<range>[\d,.\-\s\[\]to]+)$",
@@ -1174,7 +1193,7 @@ INTENTS: List[Intent] = [
         rf"\bnumerically integrate\s+{E}\s+from\s+(?P<a>{NUMLIKE})\s+to\s+(?P<b>{NUMLIKE})$",
         rf"\bsimpson'?s? rule\b.*?{E}.*from\s+(?P<a>{NUMLIKE})\s+to\s+(?P<b>{NUMLIKE})$",
     ), _build_na_simpsons),
- 
+
     # ── DiffEq ────────────────────────────────────────────────────────────
     Intent("de.rk4", _p(
         rf"\bsolve\s+dy/dt\s*=\s*{E}\s+(?:with\s+)?y\(0\)\s*=\s*(?P<y0>{NUMLIKE})(?:.*?\bto\s+t\s*=\s*(?P<t1>{NUMLIKE}))?$",
@@ -1182,12 +1201,12 @@ INTENTS: List[Intent] = [
     Intent("de.laplace", _p(
         rf"\blaplace transform of\s+{E}$",
     ), _build_de_laplace),
- 
+
     # ── Abstract Algebra ─────────────────────────────────────────────────
     Intent("aa.cyclic", _p(r"\bcyclic group of order\b")),
     Intent("aa.symmetric", _p(r"\bsymmetric group\b")),
 ]
- 
+
 # Fill in unary/simple builders defined via factories (kept out of the
 # declarative list above only because they're generated, not because
 # they're special-cased).
@@ -1201,7 +1220,7 @@ _INTENT_BUILDERS = {
     "la.eigen": _build_la_unary("eigen_full", "Computing eigenvalues/eigenvectors of"),
     "la.solve": _build_la_solve,
     "la.multiply": _build_la_multiply,
- 
+
     "stat.mean": _build_stat_unary("mean", "Computing the mean of"),
     "stat.median": _build_stat_unary("median", "Computing the median of"),
     "stat.mode": _build_stat_unary("mode", "Computing the mode of"),
@@ -1211,7 +1230,7 @@ _INTENT_BUILDERS = {
     "stat.linear_reg": _build_stat_two_sample("linear_reg", "Fitting a linear regression"),
     "stat.covariance": _build_stat_two_sample("covariance", "Computing the covariance"),
     "stat.markov_steady": _build_markov_steady,
- 
+
     "nt.gcd": _build_nt_two_int("gcd", "a", "b", "Finding the GCD of"),
     "nt.lcm": _build_nt_two_int("lcm", "a", "b", "Finding the LCM of"),
     "nt.is_prime": _build_nt_one_int("is_prime", "n", "Checking whether this is prime:"),
@@ -1222,20 +1241,20 @@ _INTENT_BUILDERS = {
         'nt:mod_pow|{"base":%s,"exp":%s,"mod":%s}' % tuple(
             jnum(x) for x in (find_numbers(text) + ["0", "0", "0"])[:3]
         ), 0, "Computing modular exponentiation.", None),
- 
+
     "dm.combinations": _build_dm_choose("combinations"),
     "dm.permutations": _build_dm_choose("permutations"),
     "dm.dijkstra": _build_dm_dijkstra,
- 
+
     "geo.distance": _build_geo_distance,
     "geo.triangle_area": _build_geo_triangle_area,
     "geo.circle": _build_geo_circle,
- 
+
     "ca.roots": _build_ca_roots,
- 
+
     "aa.cyclic": _build_aa_cyclic,
     "aa.symmetric": _build_aa_symmetric,
- 
+
     "la.add": _build_la_binary("matrix_add", "Adding the two matrices"),
     "la.subtract": _build_la_binary("matrix_subtract", "Subtracting the two matrices"),
     "la.power": _build_la_binary("matrix_power", "Raising the matrix to a power", second_is_scalar=True),
@@ -1251,7 +1270,7 @@ _INTENT_BUILDERS = {
     "la.pseudoinverse": _build_la_unary("pseudoinverse", "Computing the pseudoinverse of"),
     "la.decomp_lu": _build_la_unary("decomp_lu", "Computing the LU decomposition of"),
     "la.decomp_qr": _build_la_unary("decomp_qr_gs", "Computing the QR decomposition of"),
- 
+
     "stat.skewness": _build_stat_unary("skewness", "Computing the skewness of"),
     "stat.kurtosis": _build_stat_unary("kurtosis", "Computing the kurtosis of"),
     "stat.percentile": _build_stat_percentile,
@@ -1264,7 +1283,7 @@ _INTENT_BUILDERS = {
     "stat.normal_cdf": _build_stat_normal_cdf,
     "stat.binomial_pmf": _build_stat_binomial_pmf,
     "stat.poisson_pmf": _build_stat_poisson_pmf,
- 
+
     "nt.extended_gcd": _build_nt_two_int("extended_gcd", "a", "b", "Running the extended Euclidean algorithm on"),
     "nt.divisors": _build_nt_one_int("divisors", "n", "Finding the divisors of"),
     "nt.num_divisors": _build_nt_one_int("num_divisors", "n", "Counting the divisors of"),
@@ -1278,7 +1297,7 @@ _INTENT_BUILDERS = {
     "nt.bell": _build_nt_one_int("bell", "n", "Computing the Bell number for"),
     "nt.stirling1": _build_nt_two_int("stirling1", "n", "k", "Computing the Stirling number of the first kind for"),
     "nt.stirling2": _build_nt_two_int("stirling2", "n", "k", "Computing the Stirling number of the second kind for"),
- 
+
     "dm.derangements": lambda m, text, session: EngineCommand(
         f'dm:derangements|{{"n":{jnum((find_numbers(text) + ["0"])[0])}}}',
         0, "Counting derangements of that many items.", None),
@@ -1287,51 +1306,51 @@ _INTENT_BUILDERS = {
     "dm.bipartite": _build_dm_graph_unary("bipartite", "Checking whether this graph is bipartite"),
     "dm.floyd_warshall": _build_dm_graph_unary("floyd_warshall", "Running Floyd-Warshall (all-pairs shortest paths)"),
     "dm.prim_mst": _build_dm_graph_unary("prim_mst", "Finding the minimum spanning tree"),
- 
+
     "geo.polygon_perim": lambda m, text, session: EngineCommand(
         f'geo:polygon_perim|{{"vertices":{matrix_literal_to_json_rows(find_matrix_literal(text) or "[[0,0]]")}}}',
         1, "Computing the polygon's perimeter.", None),
- 
+
     "ca.complex_exp": _build_ca_binary_re_im("complex_exp", "Computing the complex exponential of"),
     "ca.complex_log": _build_ca_binary_re_im("complex_log", "Computing the complex logarithm of"),
     "ca.complex_sqrt": _build_ca_binary_re_im("complex_sqrt", "Computing the complex square root of"),
     "ca.polar": _build_ca_binary_re_im("polar", "Converting to polar form:"),
- 
+
     "aa.perm_order": _build_aa_perm_unary("perm_order", "Computing the order of"),
     "aa.perm_inverse": _build_aa_perm_unary("perm_inverse", "Computing the inverse of"),
- 
+
     "dm.pigeonhole": _build_nums("dm", "pigeonhole", ["items", "holes"], "Applying the pigeonhole principle"),
     "dm.topo_sort": _build_dm_graph_unary("topo_sort", "Finding a topological ordering"),
     "dm.chromatic": _build_dm_graph_unary("chromatic", "Computing the chromatic number"),
- 
+
     "nt.prime_pi": _build_nt_one_int("prime_pi", "n", "Counting primes up to"),
     "nt.mobius": _build_nt_one_int("mobius", "n", "Evaluating the Mobius function at"),
     "nt.legendre": _build_nums("nt", "legendre", ["a", "p"], "Computing the Legendre symbol"),
     "nt.jacobi_symbol": _build_nums("nt", "jacobi", ["a", "n"], "Computing the Jacobi symbol"),
     "nt.partition": _build_nt_one_int("partition", "n", "Computing the partition function of"),
- 
+
     "aa.dihedral": _build_nums("aa", "dihedral", ["n"], "Building the dihedral group"),
     "aa.quotient_group": _build_nums("aa", "quotient_group", ["n", "k"], "Building the quotient group"),
     "aa.gaussian_int": _build_nums("aa", "gaussian_int", ["a", "b"], "Working with the Gaussian integer"),
- 
+
     "stat.normal_pdf": _build_nums("stat", "normal_pdf", ["x", "mu", "sigma"], "Computing the normal PDF", defaults=["0", "0", "1"]),
     "stat.normal_qf": _build_nums("stat", "normal_qf", ["p", "mu", "sigma"], "Computing the normal quantile", defaults=["0.5", "0", "1"]),
     "stat.binomial_cdf": _build_nums("stat", "binomial_cdf", ["k", "n", "p"], "Computing the binomial CDF", defaults=["0", "0", "0.5"]),
     "stat.poisson_cdf": _build_nums("stat", "poisson_cdf", ["k", "lambda"], "Computing the Poisson CDF", defaults=["0", "1"]),
     "stat.geometric_pmf": _build_nums("stat", "geometric_pmf", ["k", "p"], "Computing the geometric PMF", defaults=["0", "0.5"]),
- 
+
     "am.logistic_growth": _build_nums("am", "logistic_growth", ["r", "K", "x0", "T"], "Modeling logistic growth", defaults=["2", "100", "10", "50"]),
     "am.sir": _build_nums("am", "sir", ["beta", "gamma", "S0", "I0", "R0"], "Running the SIR epidemic model", defaults=["0.3", "0.1", "990", "10", "0"]),
     "am.lotka_volterra": _build_nums("am", "lotka_volterra", ["alpha", "beta", "delta", "gamma", "x0", "y0"], "Simulating the Lotka-Volterra predator-prey model", defaults=["1", "1", "1", "1", "10", "5"]),
     "am.random_walk": _build_nums("am", "random_walk", ["p", "steps", "trials"], "Simulating a random walk", defaults=["0.5", "100", "1000"]),
- 
+
     "prob.mgf_normal": _build_nums("prob", "mgf_normal", ["mu", "sigma", "t"], "Computing the normal MGF", defaults=["0", "1", "0"]),
     "prob.mgf_binomial": _build_nums("prob", "mgf_binomial", ["n", "p", "t"], "Computing the binomial MGF", defaults=["10", "0.5", "0"]),
     "prob.mgf_poisson": _build_nums("prob", "mgf_poisson", ["lambda", "t"], "Computing the Poisson MGF", defaults=["1", "0"]),
     "prob.gamblers_ruin": _build_nums("prob", "gamblers_ruin", ["p", "start", "target"], "Solving the gambler's ruin problem", defaults=["0.5", "5", "10"]),
     "prob.chebyshev_ineq": _build_nums("prob", "chebyshev_ineq", ["mu", "sigma", "k"], "Applying Chebyshev's inequality", defaults=["0", "1", "2"]),
 }
- 
+
 # ─────────────────────────────────────────────────────────────────────────
 # EXPANDED COVERAGE (batch 5) — Linear Algebra's remaining ~50 operations,
 # covered via the generic _build_la_positional factory since LA.cpp's
@@ -1342,7 +1361,7 @@ _INTENT_BUILDERS = {
 # broader batch-1 patterns (e.g. bare "inverse") they'd otherwise collide
 # with.
 # ─────────────────────────────────────────────────────────────────────────
- 
+
 _LA_BATCH5 = [
     ("la.adjugate", [r"\badjugate of\b"], "adjugate", ["matrix"], "Computing the adjugate of"),
     ("la.cholesky", [r"\bcholesky decomposition\b"], "decomp_cholesky", ["matrix"], "Computing the Cholesky decomposition of"),
@@ -1404,19 +1423,19 @@ _LA_BATCH5 = [
     ("la.vector_angle", [r"\bangle between\b.*\[.*\].*\[.*\]"], "vector_angle", ["vector", "vector"], "Computing the angle between"),
     ("la.vector_distance", [r"\bdistance between\b.*\[.*\].*\[.*\]"], "vector_distance", ["vector", "vector"], "Computing the distance between"),
 ]
- 
+
 INTENTS[0:0] = [
     Intent(_name, _p(*_pats), _build_la_positional(_op, _argtypes, _verb))
     for (_name, _pats, _op, _argtypes, _verb) in _LA_BATCH5
 ]
- 
+
 # ─────────────────────────────────────────────────────────────────────────
 # EXPANDED COVERAGE (batch 6) — Statistics' remaining ~85 operations.
 # Four shapes cover nearly all of them: vector+scalars, two-vectors+scalars,
 # pure scalars (a,b,c,d contingency cells), and a single table/groups
 # matrix. Declared as data for the same reason as LA batch 5.
 # ─────────────────────────────────────────────────────────────────────────
- 
+
 _STAT_NUMS = [  # (name, patterns, op, keys, verb, defaults) -- vector x + trailing scalars
     ("stat.ci_mean_t", [r"\bconfidence interval\b.*\bt\b.*\bmean\b", r"\bt.based confidence interval\b"], "ci_mean_t", ["alpha"], "Computing a t-based confidence interval for the mean", ["0.05"]),
     ("stat.ci_mean_z", [r"\bconfidence interval\b.*\bz\b.*\bmean\b", r"\bz.based confidence interval\b"], "ci_mean_z", ["alpha"], "Computing a z-based confidence interval for the mean", ["0.05"]),
@@ -1437,7 +1456,7 @@ _STAT_NUMS = [  # (name, patterns, op, keys, verb, defaults) -- vector x + trail
     ("stat.cusum", [r"\bcusum\b"], "cusum", ["k", "h"], "Running a CUSUM control chart", ["0.5", "4"]),
     ("stat.clt_demo", [r"\bcentral limit theorem\b"], "clt_demo", ["n", "reps"], "Demonstrating the central limit theorem", ["30", "1000"]),
 ]
- 
+
 _STAT_SCALAR = [  # (name, patterns, op, keys, verb, defaults) -- pure scalars, no data vector
     ("stat.t_pdf", [r"\bt.pdf\b", r"\bt distribution pdf\b"], "t_pdf", ["x", "df"], "Computing the t-distribution PDF", ["0", "10"]),
     ("stat.t_cdf", [r"\bt.cdf\b", r"\bt distribution cdf\b"], "t_cdf", ["x", "df"], "Computing the t-distribution CDF", ["0", "10"]),
@@ -1454,13 +1473,13 @@ _STAT_SCALAR = [  # (name, patterns, op, keys, verb, defaults) -- pure scalars, 
     ("stat.ci_prop", [r"\bconfidence interval\b.*\bproportion\b"], "ci_prop", ["k", "n", "alpha"], "Computing a confidence interval for the proportion", ["1", "1", "0.05"]),
     ("stat.sampling_prop", [r"\bsampling distribution\b.*\bproportion\b"], "sampling_prop", ["n", "p", "alpha"], "Computing the sampling distribution of a proportion", ["30", "0.5", "0.05"]),
 ]
- 
+
 _STAT_TWO_NUMS = [
     ("stat.mann_whitney", [r"\bmann.whitney\b"], "mann_whitney", ["alpha"], "Running the Mann-Whitney U test", ["0.05"]),
     ("stat.ks_test", [r"\bkolmogorov.smirnov\b", r"\bks test\b"], "ks_test", ["alpha"], "Running the Kolmogorov-Smirnov test", ["0.05"]),
     ("stat.kl_div", [r"\bkl divergence\b", r"\bkullback.leibler\b"], "kl_div", [], "Computing the KL divergence", []),
 ]
- 
+
 _STAT_4INT = [  # 2x2 contingency table cells a,b,c,d
     ("stat.fisher_exact", [r"\bfisher'?s? exact test\b"], "fisher_exact", ["a", "b", "c", "d", "alpha"], "Running Fisher's exact test", ["1", "1", "1", "1", "0.05"]),
     ("stat.mcnemar", [r"\bmcnemar'?s? test\b"], "mcnemar", ["a", "b", "c", "d", "alpha"], "Running McNemar's test", ["1", "1", "1", "1", "0.05"]),
@@ -1470,13 +1489,13 @@ _STAT_4INT = [  # 2x2 contingency table cells a,b,c,d
     ("stat.nnt", [r"\bnumber needed to treat\b", r"\bnnt\b"], "nnt", ["a", "b", "c", "d"], "Computing the number needed to treat", ["1", "1", "1", "1"]),
     ("stat.phi_coeff", [r"\bphi coefficient\b"], "phi", ["a", "b", "c", "d"], "Computing the phi coefficient", ["1", "1", "1", "1"]),
 ]
- 
+
 _STAT_TABLE = [
     ("stat.chi_sq_indep", [r"\bchi.square(?:d)? test\b.*\bindependence\b", r"\bchi.squared? test of independence\b"], "chi_sq_indep", "Running a chi-square test of independence"),
     ("stat.cramer_v", [r"\bcramer'?s? v\b"], "cramer_v", "Computing Cramer's V"),
     ("stat.factorial_2x2", [r"\bfactorial (?:2x2|design)\b"], "factorial_2x2", "Analyzing the 2x2 factorial design"),
 ]
- 
+
 _STAT_GROUPS = [
     ("stat.anova_one", [r"\bone.way anova\b"], "anova_one", "Running a one-way ANOVA"),
     ("stat.anova_two", [r"\btwo.way anova\b"], "anova_two", "Running a two-way ANOVA"),
@@ -1486,7 +1505,7 @@ _STAT_GROUPS = [
     ("stat.friedman", [r"\bfriedman test\b"], "friedman", "Running the Friedman test"),
     ("stat.rand_block", [r"\brandomi[sz]ed block\b"], "rand_block", "Analyzing the randomized block design"),
 ]
- 
+
 _STAT_REG_DIAG = [
     ("stat.multiple_reg", [r"\bmultiple regression\b"], "multiple_reg", "Fitting a multiple regression"),
     ("stat.reg_diagnostics", [r"\bregression diagnostics\b"], "reg_diagnostics", "Running regression diagnostics"),
@@ -1494,7 +1513,7 @@ _STAT_REG_DIAG = [
     ("stat.cooks_distance", [r"\bcook'?s? distance\b"], "cooks_distance", "Computing Cook's distance"),
     ("stat.stepwise", [r"\bstepwise regression\b"], "stepwise", "Running stepwise regression"),
 ]
- 
+
 INTENTS[0:0] = [Intent(n, _p(*p), _build_stat_vec_nums(op, k, v, d)) for (n, p, op, k, v, d) in _STAT_NUMS]
 INTENTS[0:0] = [Intent(n, _p(*p), _build_nums("stat", op, k, v, d)) for (n, p, op, k, v, d) in _STAT_SCALAR]
 INTENTS[0:0] = [Intent(
@@ -1507,9 +1526,9 @@ INTENTS[0:0] = [Intent(n, _p(*p), _build_nums("stat", op, k, v, d)) for (n, p, o
 INTENTS[0:0] = [Intent(n, _p(*p), _build_stat_table(op, v)) for (n, p, op, v) in _STAT_TABLE]
 INTENTS[0:0] = [Intent(n, _p(*p), _build_stat_groups(op, v)) for (n, p, op, v) in _STAT_GROUPS]
 INTENTS[0:0] = [Intent(n, _p(*p), _build_stat_reg_diag(op, v)) for (n, p, op, v) in _STAT_REG_DIAG]
- 
+
 def _build_stat_poly_reg(m: Match, text: str, session) -> EngineCommand:
- 
+
     lists = []
     remaining = text
     for _ in range(2):
@@ -1523,8 +1542,8 @@ def _build_stat_poly_reg(m: Match, text: str, session) -> EngineCommand:
     degree = nums[0] if nums else "2"
     return EngineCommand(f'stat:poly_reg|{{"x":{x},"y":{y},"degree":{jnum(degree)}}}', 1,
                           f"Fitting a degree-{degree} polynomial regression.", None)
- 
- 
+
+
 INTENTS[0:0] = [
     Intent("stat.poly_reg", _p(r"\bpolynomial regression\b"), _build_stat_poly_reg),
     Intent("stat.entropy", _p(r"\bentropy of\b(?!.*joint)"), _build_stat_unary("entropy", "Computing the entropy of")),
@@ -1532,19 +1551,20 @@ INTENTS[0:0] = [
     Intent("stat.freq_table", _p(r"\bfrequency table\b"), _build_stat_unary("freq_table", "Building a frequency table for")),
     Intent("stat.summarize", _p(r"\bsummari[sz]e\b.*\[", r"\bsummary statistics\b"), _build_stat_unary("summarize", "Summarizing")),
 ]
- 
+
 for _intent in INTENTS:
     if _intent.name in _INTENT_BUILDERS:
         _intent.build = _INTENT_BUILDERS[_intent.name]
- 
+
 # ─────────────────────────────────────────────────────────────────────────
-# EXPANDED COVERAGE (batch  — Number Theory's remaining 17 operations,
+# EXPANDED COVERAGE (batch 8) — Number Theory's remaining 17 operations,
 # all pure-integer params, so the generic _build_nums factory covers them.
 # ─────────────────────────────────────────────────────────────────────────
- 
+
 _NT_BATCH8 = [
     ("nt.carmichael", [r"\bcarmichael function\b", r"\bcarmichael lambda\b"], "carmichael", ["n"], "Computing the Carmichael function of", ["1"]),
     ("nt.liouville", [r"\bliouville function\b"], "liouville", ["n"], "Evaluating the Liouville function at", ["1"]),
+    ("nt.von_mangoldt", [r"\bvon mangoldt function\b"], "von_mangoldt", ["n"], "Evaluating the von Mangoldt function at", ["1"]),
     ("nt.quad_residue", [r"\bquadratic residue\b"], "quad_residue", ["a", "p"], "Checking the quadratic residue", ["1", "2"]),
     ("nt.primitive_root", [r"\bprimitive root\b"], "primitive_root", ["p"], "Finding a primitive root modulo", ["2"]),
     ("nt.discrete_log", [r"\bdiscrete log(?:arithm)?\b"], "discrete_log", ["base", "target", "mod"], "Solving the discrete logarithm", ["2", "1", "5"]),
@@ -1560,13 +1580,13 @@ _NT_BATCH8 = [
     ("nt.rsa_keygen", [r"\brsa key\b", r"\brsa keygen\b"], "rsa_keygen", ["p", "q"], "Generating an RSA keypair from primes", ["61", "53"]),
     ("nt.el_gamal", [r"\belgamal\b", r"\bel gamal\b"], "el_gamal", ["p", "g", "x"], "Generating an ElGamal keypair", ["23", "5", "6"]),
 ]
- 
+
 INTENTS[0:0] = [Intent(n, _p(*p), _build_nums("nt", op, k, v, d)) for (n, p, op, k, v, d) in _NT_BATCH8]
- 
+
 # ─────────────────────────────────────────────────────────────────────────
 # EXPANDED COVERAGE (batch 9) — Discrete Math's remaining 25 operations.
 # ─────────────────────────────────────────────────────────────────────────
- 
+
 _DM_SET_BINARY = [
     ("dm.set_union", [r"\bunion of\b.*\[.*\].*\[.*\]", r"\bset union\b"], "set_union", "Computing the union of"),
     ("dm.set_intersect", [r"\bintersection of\b.*\[.*\].*\[.*\]", r"\bset intersection\b"], "set_intersect", "Computing the intersection of"),
@@ -1574,12 +1594,11 @@ _DM_SET_BINARY = [
     ("dm.set_sym_diff", [r"\bsymmetric difference\b"], "set_sym_diff", "Computing the symmetric difference of"),
     ("dm.is_subset", [r"\bis\b.*\bsubset of\b"], "is_subset", "Checking whether this is a subset of"),
 ]
- 
- 
+
 _DM_SET_UNARY = [
     ("dm.power_set", [r"\bpower set of\b"], "power_set", "Computing the power set of"),
 ]
- 
+
 _DM_GRAPH_UNARY_BATCH9 = [
     ("dm.diameter", [r"\bgraph diameter\b", r"\bdiameter of\b.*\bgraph\b"], "diameter", "Computing the diameter of the graph"),
     ("dm.articulation", [r"\barticulation points\b", r"\bcut vertices\b"], "articulation", "Finding the articulation points of"),
@@ -1588,7 +1607,7 @@ _DM_GRAPH_UNARY_BATCH9 = [
     ("dm.hamiltonian", [r"\bhamiltonian path\b", r"\bhamiltonian cycle\b"], "hamiltonian", "Finding a Hamiltonian path in"),
     ("dm.spec_radius", [r"\bspectral radius\b.*\bgraph\b", r"\badjacency eigenvalues\b"], "spec_radius", "Computing the spectral radius of the graph"),
 ]
- 
+
 _DM_NUMS = [
     ("dm.multiset", [r"\bmultiset coefficient\b"], "multiset", ["n", "r"], "Computing the multiset coefficient", ["1", "1"]),
     ("dm.ramsey", [r"\bramsey number\b"], "ramsey", ["s", "t"], "Computing the Ramsey number bound", ["3", "3"]),
@@ -1598,12 +1617,12 @@ _DM_NUMS = [
     ("dm.akra_bazzi", [r"\bakra.bazzi\b"], "akra_bazzi", ["a", "b", "p"], "Applying the Akra-Bazzi method", ["1", "2", "0"]),
     ("dm.max_flow", [r"\bmax(?:imum)? flow\b"], "max_flow", ["src", "sink"], "Computing the maximum flow", ["0", "1"]),
 ]
- 
+
 INTENTS[0:0] = [Intent(n, _p(*p), _build_dm_set_binary(op, v)) for (n, p, op, v) in _DM_SET_BINARY]
 INTENTS[0:0] = [Intent(n, _p(*p), _build_dm_set_unary(op, v)) for (n, p, op, v) in _DM_SET_UNARY]
 INTENTS[0:0] = [Intent(n, _p(*p), _build_dm_graph_unary(op, v)) for (n, p, op, v) in _DM_GRAPH_UNARY_BATCH9]
 INTENTS[0:0] = [Intent("dm.dfs", _p(r"\bdfs\b", r"\bdepth.first search\b"), _build_dm_graph_start("dfs", "Running DFS"))]
- 
+
 INTENTS[0:0] = [
     Intent(n, _p(*p), _build_nums("dm", op, k, v, d)) for (n, p, op, k, v, d) in _DM_NUMS[:-1]
 ]
@@ -1626,7 +1645,7 @@ INTENTS[0:0] = [
                f'dm:inclusion_excl|{{"sizes":{find_vector_literal(text) or "[]"}}}',
                0, "Applying inclusion-exclusion.", None)),
 ]
- 
+
 def _build_stat_vec2_keys(op: str, key1: str, key2: str, verb: str, extra_keys=None, extra_defaults=None):
     """Two vectors under specific (non x/y) JSON key names, e.g. p_chart's
     'defectives'/'n', or kaplan_meier's 't'/'status'."""
@@ -1650,16 +1669,16 @@ def _build_stat_vec2_keys(op: str, key1: str, key2: str, verb: str, extra_keys=N
             pairs += "," + ",".join(f'"{k}":{jnum(v)}' for k, v in zip(extra_keys, vals))
         return EngineCommand(f'stat:{op}|{{{pairs}}}', 1, f"{verb}.", None)
     return build
- 
- 
+
+
 def _build_stat_subgroups(op: str, verb: str):
     def build(m: Match, text: str, session) -> EngineCommand:
         lit = find_matrix_literal(text)
         subgroups = matrix_literal_to_json_rows(lit) if lit else "[[]]"
         return EngineCommand(f'stat:{op}|{{"subgroups":{subgroups}}}', 1, f"{verb}.", None)
     return build
- 
- 
+
+
 def _build_stat_log_rank(m: Match, text: str, session) -> EngineCommand:
     """log_rank compares two survival groups: (times1, status1, times2, status2)."""
     lists = []
@@ -1674,28 +1693,28 @@ def _build_stat_log_rank(m: Match, text: str, session) -> EngineCommand:
     return EngineCommand(
         f'stat:log_rank|{{"x":{t1},"status":{s1},"t2":{t2},"status2":{s2}}}',
         1, "Running the log-rank test comparing the two survival groups.", None)
- 
- 
+
+
 _STAT_BATCH7_VEC = [
     ("stat.c_chart", [r"\bc.chart\b"], "c_chart", [], "Running a c-chart", []),
     ("stat.np_chart", [r"\bnp.chart\b"], "np_chart", ["n"], "Running an np-chart", ["10"]),
     ("stat.durbin_watson", [r"\bdurbin.watson\b"], "durbin_watson", [], "Computing the Durbin-Watson statistic", []),
     ("stat.process_cap", [r"\bprocess capability\b"], "process_cap", ["LSL", "USL"], "Computing process capability", ["0", "1"]),
 ]
- 
+
 _STAT_BATCH7_TWO_NUMS = [
     ("stat.t_test_two2", [r"\btwo.sample t.test\b"], "t_test_two", ["alpha"], "Running a two-sample t-test", ["0.05"]),
     ("stat.t_test_paired", [r"\bpaired t.test\b"], "t_test_paired", ["alpha"], "Running a paired t-test", ["0.05"]),
 ]
- 
+
 _STAT_BATCH7_TABLE = [
     ("stat.chi_sq_indep2b", [r"\bchi.square(?:d)? goodness.of.fit\b(?=.*\[\[)"], "chi_sq_indep2", "Running a second-form chi-square independence test"),
 ]
- 
+
 INTENTS[0:0] = [Intent(n, _p(*p), _build_stat_vec_nums(op, k, v, d)) for (n, p, op, k, v, d) in _STAT_BATCH7_VEC]
 INTENTS[0:0] = [Intent(n, _p(*p), _build_stat_two_sample_nums(op, k, v, d)) for (n, p, op, k, v, d) in _STAT_BATCH7_TWO_NUMS]
 INTENTS[0:0] = [Intent(n, _p(*p), _build_stat_table(op, v)) for (n, p, op, v) in _STAT_BATCH7_TABLE]
- 
+
 INTENTS[0:0] = [
     Intent("stat.spearman", _p(r"\bspearman\b"), _build_stat_two_sample("spearman", "Computing Spearman's rank correlation")),
     Intent("stat.kendall", _p(r"\bkendall'?s? tau\b"), _build_stat_two_sample("kendall", "Computing Kendall's tau")),
@@ -1718,11 +1737,11 @@ INTENTS[0:0] = [
                1, "Analyzing the absorbing Markov chain.", None)),
     Intent("stat.log_rank", _p(r"\blog.rank test\b"), _build_stat_log_rank),
 ]
- 
+
 # ─────────────────────────────────────────────────────────────────────────
 # EXPANDED COVERAGE (batch 10) — Geometry's remaining ~40 operations.
 # ─────────────────────────────────────────────────────────────────────────
- 
+
 def _build_geo_points(op: str, key: str, verb: str, extra_keys=None, extra_defaults=None):
     def build(m: Match, text: str, session) -> EngineCommand:
         lit = find_matrix_literal(text)
@@ -1738,8 +1757,8 @@ def _build_geo_points(op: str, key: str, verb: str, extra_keys=None, extra_defau
             pairs += "," + ",".join(f'"{k}":{jnum(v)}' for k, v in zip(extra_keys, vals))
         return EngineCommand(f'geo:{op}|{{{pairs}}}', 1, f"{verb}.", None)
     return build
- 
- 
+
+
 _GEO_NUMS = [
     ("geo.line_eq", [r"\bequation of\b.*\bline\b"], "line_eq", ["x1", "y1", "x2", "y2"], "Finding the equation of the line", ["0", "0", "1", "1"]),
     ("geo.line_intersect", [r"\bintersection of\b.*\blines\b", r"\bline intersection\b"], "line_intersect", ["a1", "b1", "c1", "a2", "b2", "c2"], "Finding the intersection of the two lines", ["1", "-1", "0", "1", "1", "2"]),
@@ -1773,9 +1792,9 @@ _GEO_NUMS = [
     ("geo.polar_area", [r"\barea\b.*\bpolar curve\b"], "polar_area", ["t0", "t1"], "Computing the area of the polar curve", ["0", "6.283185"]),
     ("geo.polar_length", [r"\barc length\b.*\bpolar curve\b"], "polar_length", ["t0", "t1"], "Computing the arc length of the polar curve", ["0", "6.283185"]),
 ]
- 
+
 INTENTS[0:0] = [Intent(n, _p(*p), _build_nums("geo", op, k, v, d)) for (n, p, op, k, v, d) in _GEO_NUMS]
- 
+
 INTENTS[0:0] = [
     Intent("geo.is_convex", _p(r"\bis\b.*\bpolygon\b.*\bconvex\b", r"\bconvex polygon\b"), _build_geo_points("is_convex", "vertices", "Checking whether this polygon is convex")),
     Intent("geo.convex_hull", _p(r"\bconvex hull\b"), _build_geo_points("convex_hull", "points", "Computing the convex hull")),
@@ -1787,7 +1806,7 @@ INTENTS[0:0] = [
         f'geo:affine|{{"M":{matrix_literal_to_json_rows(find_matrix_literal(text) or "[[1,0],[0,1]]")},"px":0,"py":0}}',
         1, "Applying the affine transform.", None)),
 ]
- 
+
 def _build_geo_composite_tf(m: Match, text: str, session) -> EngineCommand:
     lit1 = find_matrix_literal(text)
     M1 = matrix_literal_to_json_rows(lit1) if lit1 else "[[1,0],[0,1]]"
@@ -1795,10 +1814,10 @@ def _build_geo_composite_tf(m: Match, text: str, session) -> EngineCommand:
     lit2 = find_matrix_literal(rest)
     M2 = matrix_literal_to_json_rows(lit2) if lit2 else "[[1,0],[0,1]]"
     return EngineCommand(f'geo:composite_tf|{{"M1":{M1},"M2":{M2}}}', 1, "Composing the two transforms.", None)
- 
- 
+
+
 INTENTS[0:0] = [Intent("geo.composite_tf", _p(r"\bcomposite transform"), _build_geo_composite_tf)]
- 
+
 INTENTS[0:0] = [
     Intent("geo.polygon_area", _p(r"\barea of\b.*\bpolygon\b"), _build_geo_points("polygon_area", "vertices", "Computing the polygon's area")),
     Intent("geo.envelope", _p(r"\benvelope of\b.*\bfamily\b.*\bcurves\b", r"\benvelope curve\b"),
@@ -1806,14 +1825,14 @@ INTENTS[0:0] = [
                f'geo:envelope|{{"F":{jv(clean_expression(text.split("of",1)[-1].strip()))},"x":"x","y":"y","param":"c"}}',
                0, "Finding the envelope of the family of curves.", None)),
 ]
- 
+
 # ─────────────────────────────────────────────────────────────────────────
 # EXPANDED COVERAGE (batch 11) — Complex Analysis's remaining 15 operations
 # (residue_theorem and schwarz_christoffel skipped: both need an array of
 # poles/prevertices with per-item structure that doesn't have a clean
-# singlntence phrasing).
+# single-sentence phrasing).
 # ─────────────────────────────────────────────────────────────────────────
- 
+
 def _build_ca_expr1_nums(op: str, num_keys, verb: str, defaults=None, expr_key="f"):
     def build(m: Match, text: str, session) -> EngineCommand:
         expr = clean_expression(m.group("expr"))
@@ -1827,22 +1846,22 @@ def _build_ca_expr1_nums(op: str, num_keys, verb: str, defaults=None, expr_key="
         return EngineCommand(f'ca:{op}|{{"{expr_key}":{jv(expr)}{"," + pairs if pairs else ""}}}',
                               0, f"{verb} {expr}.", expr)
     return build
- 
- 
+
+
 def _build_ca_cauchy_riemann(m: Match, text: str, session) -> EngineCommand:
     u, v = clean_expression(m.group("u")), clean_expression(m.group("v"))
     nums = find_numbers(text[text.find(m.group("v")) + len(m.group("v")):])
     x0, y0 = (nums + ["0", "0"])[:2]
     return EngineCommand(f'ca:cauchy_riemann|{{"u":{jv(u)},"v":{jv(v)},"x0":{jnum(x0)},"y0":{jnum(y0)}}}',
                           0, f"Checking the Cauchy-Riemann equations for u={u}, v={v}.", None)
- 
- 
+
+
 def _build_ca_is_analytic(m: Match, text: str, session) -> EngineCommand:
     u, v = clean_expression(m.group("u")), clean_expression(m.group("v"))
     return EngineCommand(f'ca:is_analytic|{{"u":{jv(u)},"v":{jv(v)}}}', 0,
                           f"Checking whether u={u}, v={v} is analytic.", None)
- 
- 
+
+
 _CA_EXPR1 = [
     ("ca.harmonic_conj", [r"\bharmonic conjugate of\s+(?P<expr>.+?)$"], "harmonic_conj", [], "Finding the harmonic conjugate of"),
     ("ca.laplacian_check", [r"\bcheck\b.*\bharmonic\b.*?(?P<expr>.+?)$", r"\bis\s+(?P<expr>.+?)\s+harmonic\b"], "laplacian_check", [], "Checking whether this function is harmonic:"),
@@ -1855,10 +1874,10 @@ _CA_EXPR1_NUMS = [
     ("ca.classify_sing", [r"\bclassify\b.*\bsingularity\b.*\bof\s+(?P<expr>.+?)\s+at\b"], "classify_sing", ["re", "im"], "Classifying the singularity of", ["0", "0"]),
     ("ca.radius_conv", [r"\bradius of convergence\b.*\bof\s+(?P<expr>.+?)$"], "radius_conv", ["a", "b"], "Finding the radius of convergence of", ["0", "1"]),
 ]
- 
+
 INTENTS[0:0] = [Intent(n, _p(*p), _build_ca_expr1_nums(op, [], v)) for (n, p, op, _nk, v) in _CA_EXPR1]
 INTENTS[0:0] = [Intent(n, _p(*p), _build_ca_expr1_nums(op, k, v, d)) for (n, p, op, k, v, d) in _CA_EXPR1_NUMS]
- 
+
 INTENTS[0:0] = [
     Intent("ca.cauchy_riemann", _p(r"\bcauchy.riemann\b.*\bu\s*=\s*(?P<u>.+?)\s*,?\s*v\s*=\s*(?P<v>.+?)$"), _build_ca_cauchy_riemann),
     Intent("ca.is_analytic", _p(r"\bis\b.*\bu\s*=\s*(?P<u>.+?)\s*,?\s*v\s*=\s*(?P<v>.+?)\s*analytic\b"), _build_ca_is_analytic),
@@ -1873,11 +1892,11 @@ INTENTS[0:0] = [
                    find_numbers(text)),
                0, "Evaluating the contour integral.", None)),
 ]
- 
+
 # ─────────────────────────────────────────────────────────────────────────
 # EXPANDED COVERAGE (batch 12) — Numerical Analysis's remaining 35 ops.
 # ─────────────────────────────────────────────────────────────────────────
- 
+
 def _build_na_root_1x0(op: str, verb: str, extra_keys=None, extra_defaults=None):
     """Root/deriv-finding ops needing f, x, and one seed point x0 (+ maybe more nums)."""
     def build(m: Match, text: str, session) -> EngineCommand:
@@ -1894,8 +1913,8 @@ def _build_na_root_1x0(op: str, verb: str, extra_keys=None, extra_defaults=None)
         return EngineCommand(f'na:{op}|{{"f":{jv(expr)},"x":{jv(var)},{pairs},"tol":1e-10,"maxIter":100}}',
                               1, f"{verb} {expr}.", expr)
     return build
- 
- 
+
+
 def _build_na_interval(op: str, verb: str, extra_json=""):
     def build(m: Match, text: str, session) -> EngineCommand:
         expr = clean_expression(m.group("expr"))
@@ -1905,8 +1924,8 @@ def _build_na_interval(op: str, verb: str, extra_json=""):
             f'na:{op}|{{"f":{jv(expr)},"x":{jv(var)},"a":{jnum(a)},"b":{jnum(b)}{extra_json}}}',
             1, f"{verb} {expr} on [{a}, {b}].", expr)
     return build
- 
- 
+
+
 def _build_na_interp(op: str, verb: str, has_ders=False):
     def build(m: Match, text: str, session) -> EngineCommand:
         lists = []
@@ -1927,8 +1946,8 @@ def _build_na_interp(op: str, verb: str, has_ders=False):
         return EngineCommand(f'na:{op}|{{"xs":{xs},"ys":{ys}{extra},"xeval":{jnum(xeval)}}}',
                               1, f"{verb} at x={xeval}.", None)
     return build
- 
- 
+
+
 def _build_na_linalg(op: str, verb: str, extra_keys=None, extra_defaults=None):
     def build(m: Match, text: str, session) -> EngineCommand:
         lit = find_matrix_literal(text)
@@ -1950,15 +1969,15 @@ def _build_na_linalg(op: str, verb: str, extra_keys=None, extra_defaults=None):
         session.last_matrix = A
         return EngineCommand(f'na:{op}|{{{pairs},"tol":1e-10,"maxIter":100}}', 1, f"{verb}.", None)
     return build
- 
- 
+
+
 E2 = r"(?P<expr>.+?)"
- 
+
 _NA_ROOT1X0 = [
     ("na.secant2", [rf"\bsecant method\b.*?{E2}\s+(?:starting|near|from)\s+(?P<extra>.+?)$"], "secant", "Running the secant method on"),
     ("na.fixed_point", [rf"\bfixed.point iteration\b.*?{E2}$"], "fixed_point", "Running fixed-point iteration on"),
 ]
- 
+
 _NA_INTERVAL = [
     ("na.romberg", [rf"\bromberg integration\b.*?{E2}\s+from\s+(?P<a>{NUMLIKE})\s+to\s+(?P<b>{NUMLIKE})$"], "romberg", "Integrating via Romberg integration"),
     ("na.adaptive_quad", [rf"\badaptive quadrature\b.*?{E2}\s+from\s+(?P<a>{NUMLIKE})\s+to\s+(?P<b>{NUMLIKE})$"], "adaptive_quad", "Integrating via adaptive quadrature"),
@@ -1967,7 +1986,7 @@ _NA_INTERVAL = [
     ("na.regula_falsi", [rf"\bregula falsi\b.*?{E2}\s+(?:on|from)\s+(?P<a>{NUMLIKE})\s+to\s+(?P<b>{NUMLIKE})$"], "regula_falsi", "Running the method of regula falsi on"),
     ("na.brent", [rf"\bbrent'?s? method\b.*?{E2}\s+(?:on|from)\s+(?P<a>{NUMLIKE})\s+to\s+(?P<b>{NUMLIKE})$"], "brent", "Running Brent's method on"),
 ]
- 
+
 _NA_INTERP = [
     ("na.lagrange", [r"\blagrange interpolation\b"], "lagrange", "Interpolating via Lagrange's method", False),
     ("na.newton_dd", [r"\bnewton'?s? divided differences?\b"], "newton_dd", "Interpolating via Newton's divided differences", False),
@@ -1976,18 +1995,18 @@ _NA_INTERP = [
     ("na.linear_spline", [r"\blinear spline interpolation\b"], "linear_spline", "Interpolating via linear spline", False),
     ("na.hermite", [r"\bhermite interpolation\b"], "hermite", "Interpolating via Hermite interpolation", True),
 ]
- 
+
 INTENTS[0:0] = [Intent(n, _p(*p), _build_na_root_1x0(op, v)) for (n, p, op, v) in _NA_ROOT1X0]
 INTENTS[0:0] = [Intent(n, _p(*p), _build_na_interval(op, v)) for (n, p, op, v) in _NA_INTERVAL]
 INTENTS[0:0] = [Intent(n, _p(*p), _build_na_interp(op, v, hd)) for (n, p, op, v, hd) in _NA_INTERP]
- 
+
 _NA_DIFF = [
     ("na.forward_diff", [r"\bforward difference\b\s+of\s+" + E2 + r"\s+at\s+(?P<extra>{NUMLIKE})$".format(NUMLIKE=NUMLIKE)], "forward_diff"),
     ("na.central_diff", [r"\bcentral difference\b\s+of\s+" + E2 + r"\s+at\s+(?P<extra>{NUMLIKE})$".format(NUMLIKE=NUMLIKE)], "central_diff"),
     ("na.second_deriv", [r"\bsecond derivative\b.*\bnumerical(?:ly)?\b\s+of\s+" + E2 + r"\s+at\s+(?P<extra>{NUMLIKE})$".format(NUMLIKE=NUMLIKE)], "second_deriv"),
     ("na.richardson_diff", [r"\brichardson extrapolation\b\s+of\s+" + E2 + r"\s+at\s+(?P<extra>{NUMLIKE})$".format(NUMLIKE=NUMLIKE)], "richardson_diff"),
 ]
- 
+
 def _build_na_diff(op: str):
     def build(m: Match, text: str, session) -> EngineCommand:
         expr = clean_expression(m.group("expr"))
@@ -1996,9 +2015,9 @@ def _build_na_diff(op: str):
         return EngineCommand(f'na:{op}|{{"f":{jv(expr)},"x":{jv(var)},"x0":{jnum(x0)}}}',
                               1, f"Computing the {op.replace('_', ' ')} of {expr} at x={x0}.", expr)
     return build
- 
+
 INTENTS[0:0] = [Intent(n, _p(*p), _build_na_diff(op)) for (n, p, op) in _NA_DIFF]
- 
+
 def _build_na_muller(m: Match, text: str, session) -> EngineCommand:
     expr = clean_expression(m.group("expr"))
     var = first_var(expr)
@@ -2008,8 +2027,8 @@ def _build_na_muller(m: Match, text: str, session) -> EngineCommand:
     return EngineCommand(
         f'na:muller|{{"f":{jv(expr)},"x":{jv(var)},"x0":{jnum(x0)},"x1":{jnum(x1)},"x2":{jnum(x2)},"tol":1e-10}}',
         1, f"Running Muller's method on {expr}.", expr)
- 
- 
+
+
 INTENTS[0:0] = [
     Intent("na.muller", _p(rf"\bmuller'?s? method\b.*?{E2}\s+(?:near|starting|with)\s+.+$"), _build_na_muller),
     Intent("na.poly_fit", _p(r"\bpolynomial fit(?:ting)?\b"), _build_na_interp("poly_fit", "Fitting a polynomial", False)),
@@ -2030,11 +2049,11 @@ INTENTS[0:0] = [
     Intent("na.conv_order", _p(r"\border of convergence\b"), lambda m, text, session: EngineCommand(
         f'na:conv_order|{{"errors":{find_vector_literal(text) or "[]"}}}', 1, "Estimating the order of convergence.", None)),
 ]
- 
-# ─────────────────────────────────────────────────────────â───────────
+
+# ─────────────────────────────────────────────────────────────────────────
 # EXPANDED COVERAGE (batch 13) — Abstract Algebra's remaining ~35 ops.
 # ─────────────────────────────────────────────────────────────────────────
- 
+
 def _build_aa_table(op: str, verb: str, extra_keys=None, extra_defaults=None):
     def build(m: Match, text: str, session) -> EngineCommand:
         lit = find_matrix_literal(text)
@@ -2050,8 +2069,8 @@ def _build_aa_table(op: str, verb: str, extra_keys=None, extra_defaults=None):
             pairs += "," + ",".join(f'"{k}":{jnum(v)}' for k, v in zip(extra_keys, vals))
         return EngineCommand(f'aa:{op}|{{{pairs}}}', 0, f"{verb}.", None)
     return build
- 
- 
+
+
 def _build_aa_poly2(op: str, verb: str, has_mod=True):
     def build(m: Match, text: str, session) -> EngineCommand:
         lists = []
@@ -2070,8 +2089,8 @@ def _build_aa_poly2(op: str, verb: str, has_mod=True):
             pairs += f',"mod":{jnum(mod)}'
         return EngineCommand(f'aa:{op}|{{{pairs}}}', 0, f"{verb} {A} and {B}.", None)
     return build
- 
- 
+
+
 def _build_aa_poly1(op: str, verb: str, num_keys=("p",), num_defaults=("2",)):
     def build(m: Match, text: str, session) -> EngineCommand:
         poly = find_vector_literal(text) or "[]"
@@ -2084,8 +2103,8 @@ def _build_aa_poly1(op: str, verb: str, num_keys=("p",), num_defaults=("2",)):
         pairs = ",".join(f'"{k}":{jnum(v)}' for k, v in zip(num_keys, vals))
         return EngineCommand(f'aa:{op}|{{"poly":{poly},{pairs}}}', 0, f"{verb} {poly}.", None)
     return build
- 
- 
+
+
 _AA_NUMS = [
     ("aa.direct_product", [r"\bdirect product of\b.*\bgroups\b", r"\bgroup direct product\b"], "direct_product", ["m", "n"], "Computing the direct product of the groups", ["2", "3"]),
     ("aa.lagrange_thm", [r"\blagrange'?s? theorem\b"], "lagrange", ["sub", "grp"], "Applying Lagrange's theorem", ["2", "6"]),
@@ -2102,26 +2121,8 @@ _AA_NUMS = [
     ("aa.ideal_gen", [r"\bideal generated by\b"], "ideal_gen", ["n", "gen"], "Finding the ideal generated by", ["12", "3"]),
     ("aa.quotient_ring", [r"\bquotient ring\b"], "quotient_ring", ["n", "ideal"], "Building the quotient ring", ["12", "3"]),
 ]
- 
+
 INTENTS[0:0] = [Intent(n, _p(*p), _build_nums("aa", op, k, v, d)) for (n, p, op, k, v, d) in _AA_NUMS]
- 
-INTENTS[0:0] = [
-    Intent("aa.is_group", _p(r"\bis\b.*\ba group\b"), _build_aa_table("is_group", "Checking whether this is a group")),
-    Intent("aa.is_abelian", _p(r"\bis\b.*\babelian\b"), _build_aa_table("is_abelian", "Checking whether this group is abelian")),
-    Intent("aa.group_order_table", _p(r"\border of\b.*\bgroup\b.*\[\["), _build_aa_table("group_order", "Computing the order of the group")),
-    Intent("aa.conjugacy", _p(r"\bconjugacy classes\b"), _build_aa_table("conjugacy", "Finding the conjugacy classes")),
-    Intent("aa.center", _p(r"\bcenter of\b.*\bgroup\b"), _build_aa_table("center", "Finding the center of the group")),
-    Intent("aa.commutator", _p(r"\bcommutator subgroup\b"), _build_aa_table("commutator", "Finding the commutator subgroup")),
-    Intent("aa.orbit_stab", _p(r"\borbit.stabili[sz]er\b"), _build_aa_table("orbit_stab", "Applying the orbit-stabilizer theorem", extra_keys=["element"], extra_defaults=["0"])),
-    Intent("aa.subgroups2", _p(r"\bsubgroups of\b.*\bcyclic\b", r"\ball subgroups of\b"), _build_nums("aa", "subgroups", ["n"], "Finding all subgroups of the cyclic group of order", ["6"])),
- 
-    Intent("aa.poly_add", _p(r"\badd\b.*\bpolynomials\b"), _build_aa_poly2("poly_add", "Adding the polynomials")),
-    Intent("aa.poly_sub", _p(r"\bsubtract\b.*\bpolynomials\b"), _build_aa_poly2("poly_sub", "Subtracting the polynomials")),
-    Intent("aa.poly_mul", _p(r"\bmultiply\b.*\bpolynomials\b"), _build_aa_poly2("poly_mul", "Multiplying the polynomials")),
-    Intent("aa.poly_div", _p(r"\bdivide\b.*\bpolynomials\b"), _build_aa_poly2("poly_div", "Dividing the polynomials")),
-    Intent("aa.poly_gcd", _p(r"\bgcd of\b.*\bpolynomials\b", r"\bpolynomial gcd\b"), _build_aa_poly2("poly_gcd", "Finding the GCD of the polynomials")),
-    Intent("aa.poly_euclid", _p(r"\beuclidean algorithm\b.*\bpolynomials\b"), _build_aa_poly2("poly_euclid", "Running the Euclidean algorithm on the polynomials")),
-]
 
 def _build_aa_poly_eval(m: Match, text: str, session) -> EngineCommand:
     poly = find_vector_literal(text) or "[]"
@@ -2131,12 +2132,30 @@ def _build_aa_poly_eval(m: Match, text: str, session) -> EngineCommand:
     mod = modm.group(1) if modm else "2"
     return EngineCommand(f'aa:poly_eval|{{"poly":{poly},"x":{jnum(x)},"mod":{jnum(mod)}}}', 0,
                           f"Evaluating the polynomial {poly}.", None)
- 
- 
-INTENTS[0:0] = [Intent("aa.poly_eval", _p(r"\bevaluate\b.*\bpolynomial\b.*\bmod\b"), _build_aa_poly_eval)]
-Intent("aa.poly_irred", _p(r"\bis\b.*\bpolynomial\b.*\birreducible\b", r"\birreducible polynomial\b"), _build_aa_poly1("poly_irred", "Checking whether this polynomial is irreducible")),
-Intent("aa.poly_factor", _p(r"\bfactor\b.*\bpolynomial\b"), _build_aa_poly1("poly_factor", "Factoring the polynomial")),
- 
+
+
+INTENTS[0:0] = [
+    Intent("aa.is_group", _p(r"\bis\b.*\ba group\b"), _build_aa_table("is_group", "Checking whether this is a group")),
+    Intent("aa.is_abelian", _p(r"\bis\b.*\babelian\b"), _build_aa_table("is_abelian", "Checking whether this group is abelian")),
+    Intent("aa.group_order_table", _p(r"\border of\b.*\bgroup\b.*\[\["), _build_aa_table("group_order", "Computing the order of the group")),
+    Intent("aa.conjugacy", _p(r"\bconjugacy classes\b"), _build_aa_table("conjugacy", "Finding the conjugacy classes")),
+    Intent("aa.center", _p(r"\bcenter of\b.*\bgroup\b"), _build_aa_table("center", "Finding the center of the group")),
+    Intent("aa.commutator", _p(r"\bcommutator subgroup\b"), _build_aa_table("commutator", "Finding the commutator subgroup")),
+    Intent("aa.orbit_stab", _p(r"\borbit.stabili[sz]er\b"), _build_aa_table("orbit_stab", "Applying the orbit-stabilizer theorem", extra_keys=["element"], extra_defaults=["0"])),
+    Intent("aa.subgroups2", _p(r"\bsubgroups of\b.*\bcyclic\b", r"\ball subgroups of\b"), _build_nums("aa", "subgroups", ["n"], "Finding all subgroups of the cyclic group of order", ["6"])),
+
+    Intent("aa.poly_add", _p(r"\badd\b.*\bpolynomials\b"), _build_aa_poly2("poly_add", "Adding the polynomials")),
+    Intent("aa.poly_sub", _p(r"\bsubtract\b.*\bpolynomials\b"), _build_aa_poly2("poly_sub", "Subtracting the polynomials")),
+    Intent("aa.poly_mul", _p(r"\bmultiply\b.*\bpolynomials\b"), _build_aa_poly2("poly_mul", "Multiplying the polynomials")),
+    Intent("aa.poly_div", _p(r"\bdivide\b.*\bpolynomials\b"), _build_aa_poly2("poly_div", "Dividing the polynomials")),
+    Intent("aa.poly_gcd", _p(r"\bgcd of\b.*\bpolynomials\b", r"\bpolynomial gcd\b"), _build_aa_poly2("poly_gcd", "Finding the GCD of the polynomials")),
+    Intent("aa.poly_euclid", _p(r"\beuclidean algorithm\b.*\bpolynomials\b"), _build_aa_poly2("poly_euclid", "Running the Euclidean algorithm on the polynomials")),
+
+    Intent("aa.poly_eval", _p(r"\bevaluate\b.*\bpolynomial\b.*\bmod\b"), _build_aa_poly_eval),
+    Intent("aa.poly_irred", _p(r"\bis\b.*\bpolynomial\b.*\birreducible\b", r"\birreducible polynomial\b"), _build_aa_poly1("poly_irred", "Checking whether this polynomial is irreducible")),
+    Intent("aa.poly_factor", _p(r"\bfactor\b.*\bpolynomial\b"), _build_aa_poly1("poly_factor", "Factoring the polynomial")),
+]
+
 def _build_aa_two_perms(op: str, key1: str, key2: str, verb: str):
     def build(m: Match, text: str, session) -> EngineCommand:
         vecs = []
@@ -2150,14 +2169,14 @@ def _build_aa_two_perms(op: str, key1: str, key2: str, verb: str):
         b = vecs[1] if len(vecs) > 1 else "[]"
         return EngineCommand(f'aa:{op}|{{"{key1}":{a},"{key2}":{b}}}', 0, f"{verb}.", None)
     return build
- 
- 
- 
+
+
+
 INTENTS[0:0] = [
     Intent("aa.perm_cycle", _p(r"\bcycle notation\b"), _build_aa_perm_unary("perm_cycle", "Writing in cycle notation")),
     Intent("aa.perm_compose", _p(r"\bcompose\b.*\bpermutations\b"), _build_aa_two_perms("perm_compose", "p", "q", "Composing the permutations")),
     Intent("aa.perm_conjugate", _p(r"\bconjugate\b.*\bpermutation\b"), _build_aa_two_perms("perm_conjugate", "p", "q", "Conjugating the permutation")),
- 
+
     Intent("aa.field_ext", _p(r"\bfield extension\b.*\bminpoly\b"), lambda m, text, session: EngineCommand(
         f'aa:field_ext|{{"p":{jnum((find_numbers(text)+["2"])[0])},"minpoly":{find_vector_literal(text) or "[]"}}}',
         0, "Building the field extension.", None)),
@@ -2171,12 +2190,12 @@ INTENTS[0:0] = [
 
 INTENTS[0:0] = [Intent("aa.perm_parity", _p(r"\bparity of\b.*\bpermutation\b"), _build_aa_perm_unary("perm_parity", "Computing the parity of"))]
 
-# -------------------------------------------------------------------------
-# EXPANDED COVERAGE (batch 14) - Calculus' remaining 15 operations
-# -------------------------------------------------------------------------
+# ─────────────────────────────────────────────────────────────────────────
+# EXPANDED COVERAGE (batch 14) — Calculus's remaining 15 operations.
+# ─────────────────────────────────────────────────────────────────────────
 
 def _build_calc_expr_nums(op: str, extra_str_keys, num_keys, verb: str, defaults=None):
-    """expr -> fixed string keys (e.g. varX/varY defaults) + trailing numeric bounds."""
+    """expr + fixed string keys (e.g. varX/varY defaults) + trailing numeric bounds."""
     def build(m: Match, text: str, session) -> EngineCommand:
         expr = clean_expression(m.group("expr"))
         rest = text[text.find(m.group("expr")) + len(m.group("expr")):]
@@ -2185,14 +2204,15 @@ def _build_calc_expr_nums(op: str, extra_str_keys, num_keys, verb: str, defaults
         vals = list(nums[:len(num_keys)])
         if len(vals) < len(num_keys):
             vals += defs[len(vals):len(num_keys)]
-        pairs = ",".join(f'"{k}":{jnoum(v)}' for k, v in zip(num_keys, vals))
+        pairs = ",".join(f'"{k}":{jnum(v)}' for k, v in zip(num_keys, vals))
         str_pairs = ",".join(f'"{k}":{jv(v)}' for k, v in extra_str_keys.items())
-        return EngineCommand(f'calc:{op}|{{"expr":{jv(expr)}{"," + str_pairs if str_pairs else ""}{"," + pairs if pairs else ""}}}', 0, f"{verb} {expr}.", expr)
+        return EngineCommand(f'calc:{op}|{{"expr":{jv(expr)}{"," + str_pairs if str_pairs else ""}{"," + pairs if pairs else ""}}}',
+                              0, f"{verb} {expr}.", expr)
     return build
 
 
 _CALC_EXPR_NUMS = [
-        ("calc.double_int", [rf"\bdouble integral of\s+{E}$"], "double_int", {"varX": "x", "varY": "y"}, ["ax", "bx", "ay", "by"], "Computing the double integral of", ["0", "1", "0", "1"]),
+    ("calc.double_int", [rf"\bdouble integral of\s+{E}$"], "double_int", {"varX": "x", "varY": "y"}, ["ax", "bx", "ay", "by"], "Computing the double integral of", ["0", "1", "0", "1"]),
     ("calc.triple_int", [rf"\btriple integral of\s+{E}$"], "triple_int", {"varX": "x", "varY": "y", "varZ": "z"}, ["ax", "bx", "ay", "by", "az", "bz"], "Computing the triple integral of", ["0", "1", "0", "1", "0", "1"]),
     ("calc.polar_int", [rf"\bpolar (?:double )?integral of\s+{E}$"], "polar_int", {"varR": "r", "varT": "theta"}, ["ar", "br", "at", "bt"], "Computing the polar integral of", ["0", "1", "0", "6.283185"]),
     ("calc.numerical_int", [rf"\bnumerically integrate\s+{E}\s+from\s+(?P<a>{NUMLIKE})\s+to\s+(?P<b>{NUMLIKE})$"], "numerical_int", {"var": "x"}, [], "Numerically integrating", []),
@@ -2212,7 +2232,7 @@ def _reg_calc_expr_nums():
             def build(m, text, session):
                 expr = clean_expression(m.group("expr"))
                 a, b = m.group("a"), m.group("b")
-                return ngineCommand(f'calc:numerical_int|{{"expr":{jv(expr)},"var":"x","a":{jnum(a)},"b":{jnum(b)}}}',
+                return EngineCommand(f'calc:numerical_int|{{"expr":{jv(expr)},"var":"x","a":{jnum(a)},"b":{jnum(b)}}}',
                                       1, f"Numerically integrating {expr} from {a} to {b}.", expr)
             out.append(Intent(name, _p(*pats), build))
         elif name == "calc.greens":
@@ -2221,7 +2241,7 @@ def _reg_calc_expr_nums():
                 nums = find_numbers(text[text.find(m.group("Q")) + len(m.group("Q")):])
                 ax, bx, ay, by = (nums + ["0", "1", "0", "1"])[:4]
                 return EngineCommand(
-                        f'calc:greens|{{"P":{jv(P)},"Q":{jv(Q)},"ax":{jnum(ax)},"bx":{jnum(bx)},"ay":{jnum(ay)},"by":{jnum(by)}}}',
+                    f'calc:greens|{{"P":{jv(P)},"Q":{jv(Q)},"ax":{jnum(ax)},"bx":{jnum(bx)},"ay":{jnum(ay)},"by":{jnum(by)}}}',
                     0, f"Applying Green's theorem to P={P}, Q={Q}.", None)
             out.append(Intent(name, _p(*pats), build))
         elif name == "calc.partial_mixed":
@@ -2248,10 +2268,11 @@ INTENTS[0:0] = [
                    clean_expression(m.group("expr")), m.group("vars")),
                0, "Finding the critical points.", None)),
 ]
+
 # ─────────────────────────────────────────────────────────────────────────
 # EXPANDED COVERAGE (batch 15) — DiffEq's remaining ~53 operations.
 # ─────────────────────────────────────────────────────────────────────────
- 
+
 def _build_de_expr1_nums(op: str, num_keys, verb: str, defaults=None, expr_key="f"):
     def build(m: Match, text: str, session) -> EngineCommand:
         expr = clean_expression(m.group("expr"))
@@ -2265,8 +2286,8 @@ def _build_de_expr1_nums(op: str, num_keys, verb: str, defaults=None, expr_key="
         return EngineCommand(f'de:{op}|{{"{expr_key}":{jv(expr)}{"," + pairs if pairs else ""}}}',
                               0, f"{verb} {expr}.", expr)
     return build
- 
- 
+
+
 def _build_de_2expr_nums(op: str, num_keys, verb: str, defaults=None, keys=("f1", "f2")):
     def build(m: Match, text: str, session) -> EngineCommand:
         exprs = extract_expr_list(text)
@@ -2284,8 +2305,8 @@ def _build_de_2expr_nums(op: str, num_keys, verb: str, defaults=None, keys=("f1"
         return EngineCommand(f'de:{op}|{{"{keys[0]}":{jv(e1)},"{keys[1]}":{jv(e2)}{"," + pairs if pairs else ""}}}',
                               0, f"{verb}.", None)
     return build
- 
- 
+
+
 # Group A: numeric ODE methods sharing rk4's exact signature
 _DE_NUMERIC_METHODS = [
     ("de.adams_bashforth", "adams.bashforth", "adams_bashforth", "Adams-Bashforth"),
@@ -2301,14 +2322,14 @@ INTENTS[0:0] = [
         _build_de_numeric_method(op, label))
     for (n, label_re, op, label) in _DE_NUMERIC_METHODS
 ]
- 
+
 # Group B: pure a,b,c
 _DE_ABC = [
     ("de.homogeneous2nd", [r"\bhomogeneous second.order\b", r"\bhomogeneous 2nd order\b"], "homogeneous2nd", ["a", "b", "c"], "Solving the homogeneous 2nd-order ODE", ["1", "3", "2"]),
     ("de.cauchy_euler", [r"\bcauchy.euler\b", r"\beuler equation\b.*\bode\b"], "cauchy_euler", ["a", "b", "c"], "Solving the Cauchy-Euler equation", ["1", "1", "1"]),
 ]
 INTENTS[0:0] = [Intent(n, _p(*p), _build_nums("de", op, k, v, d)) for (n, p, op, k, v, d) in _DE_ABC]
- 
+
 # Group C: a,b,c + g(x)
 def _build_de_abc_g(op: str, verb: str):
     def build(m: Match, text: str, session) -> EngineCommand:
@@ -2318,12 +2339,12 @@ def _build_de_abc_g(op: str, verb: str):
         return EngineCommand(f'de:{op}|{{"a":{jnum(a)},"b":{jnum(b)},"c":{jnum(c)},"g":{jv(g)},"x":"x"}}',
                               0, f"{verb} with g(x)={g}.", None)
     return build
- 
+
 INTENTS[0:0] = [
     Intent("de.undetermined_coeff", _p(r"\bundetermined coefficients\b.*\bg\(?x\)?\s*=\s*(?P<g>.+?)$", r"\bundetermined coefficients\b"), _build_de_abc_g("undetermined_coeff", "Solving by undetermined coefficients")),
     Intent("de.variation_params", _p(r"\bvariation of parameters\b.*\bg\(?x\)?\s*=\s*(?P<g>.+?)$", r"\bvariation of parameters\b"), _build_de_abc_g("variation_params", "Solving by variation of parameters")),
 ]
- 
+
 # Group D/E: reduction_of_order, annihilator
 INTENTS[0:0] = [
     Intent("de.reduction_of_order", _p(r"\breduction of order\b"), lambda m, text, session: EngineCommand(
@@ -2336,7 +2357,7 @@ INTENTS[0:0] = [
     Intent("de.higher_order", _p(r"\bhigher.order (?:linear )?ode\b"), lambda m, text, session: EngineCommand(
         f'de:higher_order|{{"coeffs":{find_vector_literal(text) or "[]"}}}', 0, "Solving the higher-order linear ODE.", None)),
 ]
- 
+
 # Group G: Laplace-related
 INTENTS[0:0] = [
     Intent("de.inverse_laplace", _p(rf"\binverse laplace(?: transform)? of\s+{E}$"), _build_de_expr1_nums("inverse_laplace", [], "Finding the inverse Laplace transform of", expr_key="F")),
@@ -2351,7 +2372,7 @@ INTENTS[0:0] = [
     Intent("de.duhamel", _p(r"\bduhamel'?s? principle\b"), _build_nums("de", "duhamel", ["alpha", "L", "tend"], "Applying Duhamel's principle", ["1", "3.14159", "1"])),
     Intent("de.parseval", _p(rf"\bparseval'?s? identity\b.*?{E}$", r"\bparseval'?s? identity\b"), _build_de_expr1_nums("parseval", ["L", "N"], "Applying Parseval's identity to", ["3.14159", "10"])),
 ]
- 
+
 # Group H: word problems
 _DE_WORD = [
     ("de.mixing", [r"\bmixing problem\b"], "mixing", ["V", "cin", "rin", "rout", "c0", "tend"], "Solving the mixing problem", ["100", "0.5", "2", "2", "0", "100"]),
@@ -2362,9 +2383,9 @@ _DE_WORD = [
     ("de.comparison_thm", [r"\bcomparison theorem\b"], "comparison_thm", ["q1", "q2", "a", "b"], "Applying the Sturm comparison theorem", ["1", "4", "0", "3.14159"]),
 ]
 INTENTS[0:0] = [Intent(n, _p(*p), _build_nums("de", op, k, v, d)) for (n, p, op, k, v, d) in _DE_WORD]
- 
+
 INTENTS[0:0] = [Intent("de.orthogonal_traj", _p(rf"\borthogonal trajector(?:y|ies) of\s+{E}$"), _build_de_expr1_nums("orthogonal_traj", [], "Finding the orthogonal trajectories of", expr_key="family"))]
- 
+
 # Group I: special functions & series
 _DE_SPECIAL = [
     ("de.bessel", [r"\bbessel(?:'s)? equation\b"], "bessel", ["nu", "x"], "Solving Bessel's equation", ["0", "1"]),
@@ -2373,7 +2394,7 @@ _DE_SPECIAL = [
     ("de.power_series", [r"\bpower series solution\b"], "power_series", ["p", "q", "r", "terms"], "Finding the power series solution", ["0", "1", "0", "8"]),
 ]
 INTENTS[0:0] = [Intent(n, _p(*p), _build_nums("de", op, k, v, d)) for (n, p, op, k, v, d) in _DE_SPECIAL]
- 
+
 INTENTS[0:0] = [
     Intent("de.fourier_series", _p(rf"\bfourier series of\s+{E}$"), _build_de_expr1_nums("fourier_series", ["L", "N"], "Computing the Fourier series of", ["3.14159", "10"])),
     Intent("de.fourier_sine", _p(rf"\bfourier sine series of\s+{E}$"), _build_de_expr1_nums("fourier_sine", ["L", "N"], "Computing the Fourier sine series of", ["3.14159", "10"])),
@@ -2384,7 +2405,7 @@ INTENTS[0:0] = [
     Intent("de.weak_solution", _p(r"\bweak solution\b"), lambda m, text, session: EngineCommand(
         f'de:weak_solution|{{"pde":"0","phi":"1","x":"x"}}', 0, "Analyzing the weak solution.", None)),
 ]
- 
+
 # Group K: qualitative systems theory
 INTENTS[0:0] = [
     Intent("de.phase_portrait", _p(r"\bphase portrait\b"), _build_nums("de", "phase_portrait", ["a", "b", "c", "d"], "Analyzing the phase portrait", ["0", "1", "-1", "0"])),
@@ -2399,7 +2420,7 @@ INTENTS[0:0] = [
     Intent("de.limit_cycle", _p(r"\blimit cycle\b"), _build_de_2expr_nums("limit_cycle", ["xmin", "xmax", "ymin", "ymax"], "Checking for a limit cycle", ["-3", "3", "-3", "3"])),
     Intent("de.poincare_index", _p(r"\bpoincare index\b", r"\bpoincar[eé].bendixson\b"), _build_de_2expr_nums("poincare_index", ["cx", "cy", "r"], "Computing the Poincare index", ["0", "0", "1"])),
 ]
- 
+
 # Group L: PDEs
 _DE_PDE = [
     ("de.heat_pde", [r"\bheat equation\b"], "heat_pde", {"ic": "sin(pi*x)"}, ["alpha", "L", "terms"], "Solving the heat equation", ["1", "1", "5"]),
@@ -2420,24 +2441,24 @@ def _reg_de_pde():
         out.append(Intent(name, _p(*pats), build))
     return out
 INTENTS[0:0] = _reg_de_pde()
- 
+
 INTENTS[0:0] = [
     Intent("de.nonhomog_pde", _p(r"\bnonhomogeneous (?:heat )?pde\b"), _build_nums("de", "nonhomog_pde", ["alpha", "L", "terms"], "Solving the nonhomogeneous PDE", ["1", "3.14159", "5"])),
     Intent("de.fourier_transform_pde", _p(r"\bfourier transform\b.*\bpde\b"), _build_nums("de", "fourier_transform_pde", ["tend"], "Solving the PDE via Fourier transform", ["1"])),
     Intent("de.characteristics_1st", _p(r"\bmethod of characteristics\b"), _build_nums("de", "characteristics_1st", [], "Solving via the method of characteristics", [])),
 ]
- 
+
 # ─────────────────────────────────────────────────────────────────────────
 # EXPANDED COVERAGE (batch 16) — Probability Theory's remaining 36 ops.
 # ─────────────────────────────────────────────────────────────────────────
- 
+
 def _detect_dist(text: str) -> str:
     for d in ("normal", "exponential", "poisson", "uniform", "gamma", "binomial"):
         if d in text.lower():
             return d
     return "normal"
- 
- 
+
+
 _PT_NUMS = [
     ("prob.mgf_exp", [r"\bmgf\b.*\bexponential\b"], "mgf_exp", ["lambda", "t"], "Computing the exponential MGF", ["1", "0"]),
     ("prob.mgf_gamma", [r"\bmgf\b.*\bgamma\b"], "mgf_gamma", ["alpha", "beta", "t"], "Computing the gamma MGF", ["2", "1", "0"]),
@@ -2464,7 +2485,7 @@ _PT_NUMS = [
     ("prob.spacings", [r"\border statistics spacings\b", r"\bexponential spacings\b"], "spacings", ["n", "lambda"], "Computing the order-statistic spacings", ["10", "1"]),
 ]
 INTENTS[0:0] = [Intent(n, _p(*p), _build_nums("prob", op, k, v, d)) for (n, p, op, k, v, d) in _PT_NUMS]
- 
+
 INTENTS[0:0] = [
     Intent("prob.mc_integrate", _p(rf"\bmonte carlo integrat\w*\s+{E}\s+from\s+(?P<a>{NUMLIKE})\s+to\s+(?P<b>{NUMLIKE})$"),
            lambda m, text, session: EngineCommand(
@@ -2507,13 +2528,13 @@ INTENTS[0:0] = [
         (lambda nums: f'prob:lst|{{"dist":{jv(_detect_dist(text))},"params":[0,1],"s":{jnum(nums[0] if nums else "1")}}}')(find_numbers(text)),
         1, "Computing the Laplace-Stieltjes transform.", None)),
 ]
- 
+
 # ─────────────────────────────────────────────────────────────────────────
 # EXPANDED COVERAGE (batch 17) — AppliedMath's remaining ~53 operations
 # (the module richest in generous C++-side defaults, so even terse
 # phrasings like "wkb approximation" produce a valid, runnable command).
 # ─────────────────────────────────────────────────────────────────────────
- 
+
 _AM_NUMS = [
     ("am.classify_linear", [r"\bclassify\b.*\blinear system\b"], "classify_linear", ["a11", "a12", "a21", "a22"], "Classifying the linear system", ["0", "1", "-1", "0"]),
     ("am.michaelis", [r"\bmichaelis.menten\b"], "michaelis", ["kcat", "Km", "E0", "S0", "T", "n"], "Simulating Michaelis-Menten kinetics", ["1", "1", "1", "10", "10", "100"]),
@@ -2532,8 +2553,8 @@ _AM_NUMS = [
     ("am.brachistochrone", [r"\bbrachistochrone\b"], "brachistochrone", ["x0", "y0", "x1", "y1"], "Solving the brachistochrone problem", ["0", "0", "1", "-1"]),
 ]
 INTENTS[0:0] = [Intent(n, _p(*p), _build_nums("am", op, k, v, d)) for (n, p, op, k, v, d) in _AM_NUMS]
- 
- 
+
+
 def _build_am_expr_nums(op: str, expr_defaults: dict, num_keys, verb: str, defaults=None):
     """1+ named expression params (with defaults) plus trailing numeric params.
     expr_defaults maps JSON key -> default expr string; the first message
@@ -2564,8 +2585,8 @@ def _build_am_expr_nums(op: str, expr_defaults: dict, num_keys, verb: str, defau
         num_pairs = ",".join(f'"{k}":{jnum(v)}' for k, v in zip(num_keys, nvals))
         return EngineCommand(f'am:{op}|{{{str_pairs}{"," + num_pairs if num_pairs else ""}}}', 0, f"{verb}.", None)
     return build
- 
- 
+
+
 _AM_EXPR = [
     ("am.linearise", [r"\blineari[sz]e\b.*\bfixed point\b"], "linearise", {"f": "y", "g": "-x"}, ["x0", "y0"], "Linearizing about the fixed point", ["0", "0"]),
     ("am.euler_lagrange", [rf"\beuler.lagrange\b\s+(?:for|of)\s+{E}$", r"\beuler.lagrange equation\b"], "euler_lagrange", {"L": "yp^2"}, [], "Deriving the Euler-Lagrange equation for"),
@@ -2597,7 +2618,7 @@ _AM_EXPR = [
     ("am.shock_time", [r"\bshock formation time\b"], "shock_time", {"c": "1+u0", "u0": "sin(x)"}, ["xmin", "xmax"], "Computing the shock formation time", ["-5", "5"]),
     ("am.continuity_1d", [r"\b1d continuity equation\b", r"\bcontinuity equation\b.*\bfluid\b"], "continuity_1d", {"u": "1"}, ["rho", "L", "T"], "Solving the 1D continuity equation", ["1", "10", "1"]),
 ]
- 
+
 def _reg_am_expr():
     out = []
     for entry in _AM_EXPR:
@@ -2605,9 +2626,9 @@ def _reg_am_expr():
         defs = entry[6] if len(entry) > 6 else None
         out.append(Intent(name, _p(*pats), _build_am_expr_nums(op, edefs, nk, verb, defs)))
     return out
- 
+
 INTENTS[0:0] = _reg_am_expr()
- 
+
 INTENTS[0:0] = [
     Intent("am.buckingham", _p(r"\bbuckingham pi\b"), lambda m, text, session: EngineCommand(
         f'am:buckingham|{{"vars":["m","l","t"],"D":[[1,0,0],[0,1,0],[0,0,1]]}}', 0,
@@ -2616,7 +2637,7 @@ INTENTS[0:0] = [
         f'am:nondim|{{"eq":{jv(clean_expression(extract_between(text, ["nondimensionalize", "nondimensionalise"]) or "x+eps*x^2"))},"vars":["x"],"scales":[1]}}',
         0, "Nondimensionalizing the equation.", None)),
 ]
- 
+
 INTENTS[0:0] = [
     Intent("am.galton_watson", _p(r"\bgalton.watson\b"), lambda m, text, session: EngineCommand(
         f'am:galton_watson|{{"pk":{find_vector_literal(text) or "[0.2,0.5,0.3]"},"gen":{jnum((find_numbers(text)+["10"])[-1])}}}',

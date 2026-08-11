@@ -1,19 +1,19 @@
 """
 knowledge.py
---------------
+─────────────
 Feature 4 (Localized Fallback Knowledge Base): "what is X" / "explain X"
-/ "define X" queries are answered from docs_kb/knowledge_base.json - a
+/ "define X" queries are answered from docs_kb/knowledge_base.json — a
 small, static, hand-curated set of definitions tied directly to engine
-operations - rather than from the chatbot's own (unverified) grasp of
+operations — rather than from the chatbot's own (unverified) grasp of
 the concept. This keeps explanations tethered to what the engine
 actually implements: every entry names the exact engine op and payload
 shape it corresponds to.
 
 The same file is also served over HTTP by the Spring server's
 DocsController (GET /api/docs/search?query=...) for parity with
-non-desktop clients; this module reads it directly off disk instead of 
-making a network round trip, since the Python subprocess already runs 
-right next to the repo and the server may not even be running in 
+non-desktop clients; this module reads it directly off disk instead of
+making a network round trip, since the Python subprocess already runs
+right next to the repo and the server may not even be running in
 desktop mode.
 """
 
@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 _ASK_RE = re.compile(
-        r"^(?:what is|what's|whats|what are|explain|define|tell me about)\s+(?:a |an |the )?(?P<term>.+?)\??$",
+    r"^(?:what is|what's|whats|what are|explain|define|tell me about)\s+(?:a |an |the )?(?P<term>.+?)\??$",
     re.IGNORECASE,
 )
 
@@ -66,16 +66,16 @@ def extract_query(text: str) -> Optional[str]:
         return None
     term = m.group("term").strip()
     # "what is the determinant of this matrix" is a computation request
-    # referencing a specific instance, not a request for a definition -
+    # referencing a specific instance, not a request for a definition —
     # let intent matching handle it instead of shadowing it here.
     if _INSTANCE_REF_RE.search(term):
         return None
     return term
 
 
-def search(query: str limit: int = 3) -> List[dict]:
-    """Simple relevance search: exact id/title match first,
-    then substring match against title and definition, rannked by title
+def search(query: str, limit: int = 3) -> List[dict]:
+    """Simple relevance search: exact id/title match first, then
+    substring match against title and definition, ranked by title
     match > definition match."""
     entries = _load()
     q = query.lower().strip()
@@ -100,14 +100,25 @@ def search(query: str limit: int = 3) -> List[dict]:
         if score > 0:
             scored.append((score, e))
     scored.sort(key=lambda p: -p[0])
-    return [e for _, e in scroed[:limit]]
+    return [e for _, e in scored[:limit]]
 
 
 def format_entry(e: dict) -> str:
     return (
-            f"**[e['title']]** ({e['module']})\n\n{e['definition']}\n\n"
-            f"Engine syntax: `{e['syntax']}`"
+        f"**{e['title']}** ({e['module']})\n\n{e['definition']}\n\n"
+        f"Engine syntax: `{e['syntax']}`"
     )
+
+
+def answer_by_id(entry_id: str) -> Optional[str]:
+    """Direct lookup by the KB entry's own id — used by the "explain that"
+    follow-up (followups.py), which already knows exactly which entry it
+    wants via the last intent that ran, rather than needing to fuzzy-match
+    against free text the way answer()/search() do."""
+    for e in _load():
+        if e["id"] == entry_id:
+            return format_entry(e)
+    return None
 
 
 def answer(query: str) -> Optional[str]:

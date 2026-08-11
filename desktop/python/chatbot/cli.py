@@ -44,7 +44,7 @@ Response:
     should change what the desktop UI is showing rather than compute a
     result, e.g.:
       {"type": "SWITCH_TAB", "target": "Graph",
-       "payload": {"equation": "sin(x)", "range": [-10, 10], "is3d": false}}
+       "payload": {"equations": ["sin(x)"], "range": [-10, 10], "is3d": false}}
     When present, "engine_input" is null — there's nothing to compute,
     only a UI action to carry out.
 

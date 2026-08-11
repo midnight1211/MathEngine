@@ -266,11 +266,23 @@ public class MainLayout extends BorderPane {
         // Feature 2 (Chat-Driven Actions): the chatbot can switch tabs and
         // populate the Graph tab directly (e.g. "plot sin(x) from -10 to 10").
         chatbotPanel.setOnAction((actionType, actionTarget, payloadJson) -> {
+            if ("CLEAR_GRAPH".equals(actionType) && "Graph".equals(actionTarget)) {
+                graphPanel.clearPlots();
+                tabs.getSelectionModel().select(graphTab);
+                return;
+            }
             if (!"SWITCH_TAB".equals(actionType)) return;
             if ("Graph".equals(actionTarget)) {
-                String equation = extractJsonStringField(payloadJson, "equation");
-                if (equation != null && !equation.isBlank()) {
-                    graphPanel.plotExpression(equation);
+                java.util.List<String> equations = extractJsonStringArrayField(payloadJson, "equations");
+                double[] range = extractJsonNumberArrayField(payloadJson, "range");
+                if (equations != null && !equations.isEmpty()) {
+                    graphPanel.clearPlots();
+                    if (range != null && range.length == 2) {
+                        graphPanel.setRange(range[0], range[1], range[0], range[1]);
+                    }
+                    for (String eq : equations) {
+                        graphPanel.plotExpression(eq);
+                    }
                 }
                 tabs.getSelectionModel().select(graphTab);
             } else if ("Compute".equals(actionTarget)) {
@@ -305,14 +317,39 @@ public class MainLayout extends BorderPane {
         return sb.toString();
     }
 
-    /** Pulls a top-level string field out of a small flat JSON object —
-     * good enough for the chatbot action payloads, which never nest. */
-    private static String extractJsonStringField(String json, String field) {
+    /** Pulls a top-level array-of-strings field (e.g. "equations":["sin(x)","cos(x)"])
+     * out of a small flat JSON object. Returns null if the field is missing. */
+    private static java.util.List<String> extractJsonStringArrayField(String json, String field) {
         if (json == null) return null;
         java.util.regex.Matcher m = java.util.regex.Pattern
-            .compile("\"" + java.util.regex.Pattern.quote(field) + "\"\\s*:\\s*\"([^\"]*)\"")
+            .compile("\"" + java.util.regex.Pattern.quote(field) + "\"\\s*:\\s*\\[([^\\]]*)\\]")
             .matcher(json);
-        return m.find() ? m.group(1) : null;
+        if (!m.find()) return null;
+        java.util.List<String> out = new java.util.ArrayList<>();
+        java.util.regex.Matcher sm = java.util.regex.Pattern.compile("\"([^\"]*)\"").matcher(m.group(1));
+        while (sm.find()) out.add(sm.group(1));
+        return out;
+    }
+
+    /** Pulls a top-level numeric array field (e.g. "range":[-10,10]) out of
+     * a small flat JSON object. Returns null if the field is missing or
+     * any element fails to parse. */
+    private static double[] extractJsonNumberArrayField(String json, String field) {
+        if (json == null) return null;
+        java.util.regex.Matcher m = java.util.regex.Pattern
+            .compile("\"" + java.util.regex.Pattern.quote(field) + "\"\\s*:\\s*\\[([^\\]]*)\\]")
+            .matcher(json);
+        if (!m.find()) return null;
+        String[] parts = m.group(1).split(",");
+        double[] out = new double[parts.length];
+        for (int i = 0; i < parts.length; i++) {
+            try {
+                out[i] = Double.parseDouble(parts[i].trim());
+            } catch (NumberFormatException e) {
+                return null;
+            }
+        }
+        return out;
     }
 
     private static String escapeJson(String s) {

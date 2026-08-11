@@ -1,252 +1,97 @@
 {
-	"entries": [
-		{
-			"id": "derivative",
-			"title": "Derivative",
-			"module": "Calculus",
-			"engine_op": "calc:diff",
-			"definition": "The derivative of f(x) measures its instantaneous rate of change with respect to x. The engine computes symbolic derivatives via calc:diff, and supports partial, mixed-partial, and higher-order derivatives through calc:partial, calc:partial_mixed, and repeated calc:diff calls.",
-			"syntax": "diff[expr,var] or calc:diff|{\"expr\":\"x^2\",\"var\":\"x\",\"order\":1}"
-		},
-		{
-			"id": "integral",
-			"title": "Integral",
-			"module": "Calculus",
-			"engine_op": "calc:integrate",
-			"definition": "An indefinite integral (antiderivative) or definite integral computes the accumulated area under f(x). The engine supports indefinite (calc:integrate), definite (calc:definite_int), double (calc:double_int), triple (calc:triple_int), and polar (calc:polar_int) integrals, plus numerical integration via calc:numerical_int.",
-			"syntax": "integrate[expr] or definite_int[expr,a,b]"
-		},
-		{
-			"id": "taylor_series",
-      			"title": "Taylor Series",
-      			"module": "Calculus",
-      			"engine_op": "calc:taylor",
-      			"definition": "A Taylor series approximates a function near a point using a polynomial built from its derivatives at that point. The engine's calc:taylor op takes an expression, a center point, and an order (number of terms).",
-      			"syntax": "taylor[expr,center,order]"
-    		},
-    		{
-      			"id": "limit",
-      			"title": "Limit",
-      			"module": "Calculus",
-      			"engine_op": "calc:limit",
-      			"definition": "A limit describes the value a function approaches as its input approaches some point (or infinity). The engine supports two-sided, left-hand, right-hand, and limits at +/- infinity via calc:limit, calc:limit_left, calc:limit_right, calc:limit_inf, and calc:limit_neginf.",
-      			"syntax": "expr as var->point"
-    		},
-    		{
-      			"id": "determinant",
-      			"title": "Determinant",
-      			"module": "Linear Algebra",
-      			"engine_op": "la:determinant",
-      			"definition": "The determinant of a square matrix is a scalar that describes how the matrix scales volume, and whether it's invertible (a zero determinant means the matrix is singular). Computed via la:determinant.",
-      			"syntax": "la:determinant|[[1,2],[3,4]]"
-    		},
-    		{
-      			"id": "matrix_inverse",
-      			"title": "Matrix Inverse",
-      			"module": "Linear Algebra",
-      			"engine_op": "la:inverse",
-      			"definition": "The inverse of a square matrix A, written A^-1, satisfies A*A^-1 = I. A matrix is invertible only if its determinant is nonzero (i.e. it's non-singular). Computed via la:inverse.",
-      			"syntax": "la:inverse|[[1,2],[3,4]]"
-    		},
-    		{
-      			"id": "eigenvalues",
-      			"title": "Eigenvalues & Eigenvectors",
-      			"module": "Linear Algebra",
-      			"engine_op": "la:eigen_full",
-      			"definition": "An eigenvector v of a matrix A satisfies A*v = lambda*v for some scalar lambda (its eigenvalue) — v's direction is unchanged by the transformation. Computed via la:eigen_full (both) or la:eigenvalues/la:eigenvectors (separately).",
-      			"syntax": "la:eigen_full|[[2,0],[0,3]]"
-    		},
-    		{
-      			"id": "singular_matrix",
-      			"title": "Singular Matrix",
-      			"module": "Linear Algebra",
-      			"engine_op": "la:determinant",
-      			"definition": "A matrix is singular if its determinant is zero, meaning it has no inverse and its rows/columns are linearly dependent. Check with la:determinant (zero result) or la:rank (rank less than the matrix's dimension).",
-      			"syntax": "la:determinant|[[...]]  and  la:rank|[[...]]"
-    		},
-    		{
-      			"id": "mean",
-      			"title": "Mean",
-      			"module": "Statistics",
-      			"engine_op": "stat:mean",
-      			"definition": "The arithmetic mean (average) of a dataset is the sum of its values divided by the count. Computed via stat:mean.",
-      			"syntax": "stat:mean|{\"x\":[1,2,3,4]}"
-    		},
-    		{
-      			"id": "standard_deviation",
-      			"title": "Standard Deviation",
-      			"module": "Statistics",
-      			"engine_op": "stat:stddev",
-      			"definition": "Standard deviation measures how spread out a dataset's values are around the mean — the square root of the variance. Computed via stat:stddev (variance via stat:variance).",
-      			"syntax": "stat:stddev|{\"x\":[1,2,3,4]}"
-    		},
-    		{
-      			"id": "correlation",
-      			"title": "Correlation (Pearson)",
-      			"module": "Statistics",
-      			"engine_op": "stat:pearson",
-      			"definition": "The Pearson correlation coefficient measures the strength and direction of the linear relationship between two variables, ranging from -1 (perfect negative) to +1 (perfect positive). Computed via stat:pearson.",
-      			"syntax": "stat:pearson|{\"x\":[...],\"y\":[...]}"
-    		},
-    		{
-      			"id": "linear_regression",
-      			"title": "Linear Regression",
-      			"module": "Statistics",
-      			"engine_op": "stat:linear_reg",
-      			"definition": "Linear regression fits a straight line (y = mx + b) that best predicts y from x by minimizing squared error. Computed via stat:linear_reg; polynomial regression is available via stat:poly_reg.",
-      			"syntax": "stat:linear_reg|{\"x\":[...],\"y\":[...]}"
-    		},
-    		{
-      			"id": "hypothesis_test",
-      			"title": "Hypothesis Testing",
-      			"module": "Statistics",
-      			"engine_op": "stat:t_test_one",
-      			"definition": "A hypothesis test checks whether observed data is consistent with a claim (the null hypothesis), producing a p-value/test statistic. The engine supports one- and two-sample t-tests, z-tests, chi-square tests, ANOVA, and many nonparametric tests (Wilcoxon, Mann-Whitney, Kruskal-Wallis).",
-      			"syntax": "stat:t_test_one|{\"x\":[...],\"mu0\":0,\"alpha\":0.05}"
-    		},
-    		{
-      			"id": "gcd",
-      			"title": "Greatest Common Divisor (GCD)",
-      			"module": "Number Theory",
-      			"engine_op": "nt:gcd",
-      			"definition": "The GCD of two integers is the largest integer that divides both without a remainder. Computed via nt:gcd; the extended version (which also returns Bezout coefficients) is nt:extended_gcd.",
-      			"syntax": "nt:gcd|{\"a\":48,\"b\":18}"
-    		},
-    		{
-      			"id": "prime_factorization",
-      			"title": "Prime Factorization",
-      			"module": "Number Theory",
-      			"engine_op": "nt:prime_factors",
-      			"definition": "Prime factorization decomposes an integer into a product of prime numbers. Computed via nt:prime_factors; related checks include nt:is_prime and nt:divisors.",
-      			"syntax": "nt:prime_factors|{\"n\":60}"
-    		},
-    		{
-      			"id": "modular_arithmetic",
-      			"title": "Modular Arithmetic",
-      			"module": "Number Theory",
-      			"engine_op": "nt:mod_pow",
-      			"definition": "Modular arithmetic works with remainders after division by a fixed modulus. The engine supports modular exponentiation (nt:mod_pow), modular inverses (nt:mod_inverse), and linear/quadratic congruences (nt:linear_cong, nt:quad_cong).",
-      			"syntax": "nt:mod_pow|{\"base\":3,\"exp\":200,\"mod\":13}"
-    		},
-    		{
-      			"id": "combinations_permutations",
-      			"title": "Combinations & Permutations",
-      			"module": "Discrete Math",
-      			"engine_op": "dm:combinations",
-      			"definition": "Combinations (nCr) count ways to choose r items from n without regard to order; permutations (nPr) count ordered arrangements. Computed via dm:combinations and dm:permutations.",
-      			"syntax": "combinations[n,r]  or  permutations[n,r]"
-    		},
-    		{
-      			"id": "graph_shortest_path",
-      			"title": "Shortest Path (Dijkstra)",
-      			"module": "Discrete Math",
-      			"engine_op": "dm:dijkstra",
-      			"definition": "Dijkstra's algorithm finds the shortest path from a source node to all others in a weighted graph with non-negative edge weights, given as an adjacency matrix. Computed via dm:dijkstra (all-pairs version: dm:floyd_warshall).",
-      			"syntax": "dm:dijkstra|{\"adj\":[[...]],\"src\":0}"
-    		},
-    		{
-      			"id": "distance_formula",
-      			"title": "Distance Formula",
-      			"module": "Geometry",
-      			"engine_op": "geo:distance_2d",
-      			"definition": "The distance between two points is the length of the straight line connecting them: sqrt((x2-x1)^2 + (y2-y1)^2) in 2D, extended with a z-term in 3D. Computed via geo:distance_2d / geo:distance_3d.",
-      			"syntax": "geo:distance_2d|{\"x1\":0,\"y1\":0,\"x2\":3,\"y2\":4}"
-    		},
-    		{
-      			"id": "complex_roots",
-      			"title": "Complex Roots",
-      			"module": "Complex Analysis",
-      			"engine_op": "ca:all_roots",
-      			"definition": "Every nonzero complex number has exactly n distinct nth roots, evenly spaced around a circle in the complex plane. Computed via ca:all_roots.",
-      			"syntax": "ca:all_roots|{\"re\":1,\"im\":0,\"n\":4}"
-    		},
-    		{
-      			"id": "residue",
-      			"title": "Residue (Complex Analysis)",
-      			"module": "Complex Analysis",
-      			"engine_op": "ca:residue",
-      			"definition": "The residue of a function at a pole is the coefficient of the 1/(z-z0) term in its Laurent series there, central to evaluating contour integrals via the residue theorem. Computed via ca:residue.",
-      			"syntax": "ca:residue|{\"f\":\"1/z\",\"re\":0,\"im\":0,\"order\":1}"
-    		},
-    		{
-      			"id": "newtons_method",
-      			"title": "Newton's Method",
-      			"module": "Numerical Analysis",
-      			"engine_op": "na:newton",
-      			"definition": "Newton's method finds roots of f(x) by iterating x_{n+1} = x_n - f(x_n)/f'(x_n), converging quickly from a good starting guess. Computed via na:newton; bisection (na:bisection) and the secant method (na:secant) are more robust alternatives.",
-      			"syntax": "na:newton|{\"f\":\"x^2-2\",\"x\":\"x\",\"x0\":1,\"tol\":1e-10}"
-    		},
-    		{
-      			"id": "ode_rk4",
-      			"title": "Runge-Kutta (RK4)",
-      			"module": "Differential Equations",
-      			"engine_op": "de:rk4",
-      			"definition": "RK4 numerically solves an ODE dy/dt = f(t,y) by taking weighted steps using four slope estimates per interval, far more accurate than Euler's method for the same step size. Computed via de:rk4 (also available: de:euler, de:rk2, de:rk45, de:adams_bashforth).",
-      			"syntax": "de:rk4|{\"f\":\"t+y\",\"tvar\":\"t\",\"yvar\":\"y\",\"t0\":0,\"t1\":2,\"y0\":1,\"n\":100}"
-    		},
-    		{
-      			"id": "laplace_transform",
-      			"title": "Laplace Transform",
-      			"module": "Differential Equations",
-      			"engine_op": "de:laplace",
-      			"definition": "The Laplace transform converts a function of time into a function of a complex frequency variable s, turning differential equations into algebraic ones. Computed via de:laplace (inverse: de:inverse_laplace).",
-      			"syntax": "de:laplace|{\"f\":\"sin(t)\",\"t\":\"t\",\"s\":\"s\"}"
-    		},
-    		{
-      			"id": "group_theory",
-      			"title": "Groups (Abstract Algebra)",
-      			"module": "Abstract Algebra",
-     			"engine_op": "aa:cyclic",
-      			"definition": "A group is a set with an operation satisfying closure, associativity, identity, and inverses. The engine can build cyclic groups (aa:cyclic), symmetric groups (aa:symmetric), and dihedral groups (aa:dihedral), and check properties like abelian-ness (aa:is_abelian).",
-      			"syntax": "aa:cyclic|{\"n\":6}"
-    		},
-    		{
-      			"id": "bayes_theorem",
-      			"title": "Bayes' Theorem",
-      			"module": "Statistics",
-      			"engine_op": "stat:bayes",
-      			"definition": "Bayes' theorem relates conditional probabilities: P(A|B) = P(B|A)*P(A) / P(B), updating a prior belief given new evidence. Computed via stat:bayes.",
-      			"syntax": "stat:bayes|{\"prior\":0.3,\"likelihood\":0.8,\"marginal\":0.5}"
-    		},
-    		{
-      			"id": "markov_chain",
-      			"title": "Markov Chain",
-      			"module": "Statistics / Probability",
-      			"engine_op": "stat:markov_steady",
-      			"definition": "A Markov chain models a system that moves between states with transition probabilities depending only on the current state. Its steady-state distribution (if it exists) is computed via stat:markov_steady.",
-      			"syntax": "stat:markov_steady|{\"T\":[[...]]}"
-    		},
-    		{
-      			"id": "central_limit_theorem",
-      			"title": "Central Limit Theorem",
-      			"module": "Statistics",
-      			"engine_op": "stat:clt_demo",
-      			"definition": "The Central Limit Theorem states that the sampling distribution of the mean of many independent samples approaches a normal distribution, regardless of the population's original distribution, as sample size grows. Demonstrated via stat:clt_demo.",
-      			"syntax": "stat:clt_demo|{\"x\":[...],\"n\":30,\"reps\":1000}"
-    		},
-    		{
-      			"id": "logistic_growth",
-      			"title": "Logistic Growth",
-      			"module": "AppliedMath",
-      			"engine_op": "am:logistic_growth",
-      			"definition": "Logistic growth models population growth that slows as it approaches a carrying capacity K, following dN/dt = r*N*(1-N/K). Computed via am:logistic_growth.",
-      			"syntax": "am:logistic_growth|{\"r\":2,\"K\":100,\"x0\":10,\"T\":50}"
-    		},
-    		{
-      			"id": "sir_model",
-      			"title": "SIR Epidemic Model",
-      			"module": "AppliedMath",
-      			"engine_op": "am:sir",
-      			"definition": "The SIR model divides a population into Susceptible, Infected, and Recovered compartments and tracks how they evolve over time given transmission (beta) and recovery (gamma) rates. Computed via am:sir; the reproduction number R0 = beta/gamma is available via am:reproduction_number.",
-      			"syntax": "am:sir|{\"beta\":0.3,\"gamma\":0.1,\"S0\":990,\"I0\":10,\"R0\":0,\"T\":100}"
-    		},
-    		{
-      			"id": "expression_syntax",
-      			"title": "Expression Syntax",
-      			"module": "Core Engine",
-      			"engine_op": "week_4 preprocessor",
-      			"definition": "Plain expressions (e.g. \"2^8 + sqrt(16)\") are parsed directly by the engine. Structured operations use either shorthand like \"diff[x^2,x]\" (expanded by Preprocessor.cpp) or the raw wire format \"prefix:op|payload\" (e.g. \"la:determinant|[[1,2],[3,4]]\", \"stat:mean|{\\\"x\\\":[1,2,3]}\"), where payload is either a bracketed literal (Linear Algebra) or a JSON object (most other modules).",
-      			"syntax": "See chatbot/README.md 'Command format reference' for the full breakdown."
-    		}
-  	]
+  "entries": [
+    {"id": "derivative", "title": "Derivative", "module": "Calculus", "engine_op": "calc:diff",
+     "definition": "The derivative of f(x) measures its instantaneous rate of change with respect to x. The engine computes symbolic derivatives via calc:diff, and supports partial, mixed-partial, and higher-order derivatives through calc:partial, calc:partial_mixed, and repeated calc:diff calls.",
+     "syntax": "diff[expr,var]  or  calc:diff|{\"expr\":\"x^2\",\"var\":\"x\",\"order\":1}"},
+    {"id": "integral", "title": "Integral", "module": "Calculus", "engine_op": "calc:integrate",
+     "definition": "An indefinite integral (antiderivative) or definite integral computes the accumulated area under f(x). The engine supports indefinite (calc:integrate), definite (calc:definite_int), double (calc:double_int), triple (calc:triple_int), and polar (calc:polar_int) integrals, plus numerical integration via calc:numerical_int.",
+     "syntax": "integrate[expr]  or  definite_int[expr,a,b]"},
+    {"id": "taylor_series", "title": "Taylor Series", "module": "Calculus", "engine_op": "calc:taylor",
+     "definition": "A Taylor series approximates a function near a point using a polynomial built from its derivatives at that point. The engine's calc:taylor op takes an expression, a center point, and an order (number of terms).",
+     "syntax": "taylor[expr,center,order]"},
+    {"id": "limit", "title": "Limit", "module": "Calculus", "engine_op": "calc:limit",
+     "definition": "A limit describes the value a function approaches as its input approaches some point (or infinity). The engine supports two-sided, left-hand, right-hand, and limits at +/- infinity via calc:limit, calc:limit_left, calc:limit_right, calc:limit_inf, and calc:limit_neginf.",
+     "syntax": "expr as var->point"},
+    {"id": "determinant", "title": "Determinant", "module": "Linear Algebra", "engine_op": "la:determinant",
+     "definition": "The determinant of a square matrix is a scalar that describes how the matrix scales volume, and whether it's invertible (a zero determinant means the matrix is singular). Computed via la:determinant.",
+     "syntax": "la:determinant|[[1,2],[3,4]]"},
+    {"id": "matrix_inverse", "title": "Matrix Inverse", "module": "Linear Algebra", "engine_op": "la:inverse",
+     "definition": "The inverse of a square matrix A, written A^-1, satisfies A*A^-1 = I. A matrix is invertible only if its determinant is nonzero (i.e. it's non-singular). Computed via la:inverse.",
+     "syntax": "la:inverse|[[1,2],[3,4]]"},
+    {"id": "eigenvalues", "title": "Eigenvalues & Eigenvectors", "module": "Linear Algebra", "engine_op": "la:eigen_full",
+     "definition": "An eigenvector v of a matrix A satisfies A*v = lambda*v for some scalar lambda (its eigenvalue) — v's direction is unchanged by the transformation. Computed via la:eigen_full (both) or la:eigenvalues/la:eigenvectors (separately).",
+     "syntax": "la:eigen_full|[[2,0],[0,3]]"},
+    {"id": "singular_matrix", "title": "Singular Matrix", "module": "Linear Algebra", "engine_op": "la:determinant",
+     "definition": "A matrix is singular if its determinant is zero, meaning it has no inverse and its rows/columns are linearly dependent. Check with la:determinant (zero result) or la:rank (rank less than the matrix's dimension).",
+     "syntax": "la:determinant|[[...]]  and  la:rank|[[...]]"},
+    {"id": "mean", "title": "Mean", "module": "Statistics", "engine_op": "stat:mean",
+     "definition": "The arithmetic mean (average) of a dataset is the sum of its values divided by the count. Computed via stat:mean.",
+     "syntax": "stat:mean|{\"x\":[1,2,3,4]}"},
+    {"id": "standard_deviation", "title": "Standard Deviation", "module": "Statistics", "engine_op": "stat:stddev",
+     "definition": "Standard deviation measures how spread out a dataset's values are around the mean — the square root of the variance. Computed via stat:stddev (variance via stat:variance).",
+     "syntax": "stat:stddev|{\"x\":[1,2,3,4]}"},
+    {"id": "correlation", "title": "Correlation (Pearson)", "module": "Statistics", "engine_op": "stat:pearson",
+     "definition": "The Pearson correlation coefficient measures the strength and direction of the linear relationship between two variables, ranging from -1 (perfect negative) to +1 (perfect positive). Computed via stat:pearson.",
+     "syntax": "stat:pearson|{\"x\":[...],\"y\":[...]}"},
+    {"id": "linear_regression", "title": "Linear Regression", "module": "Statistics", "engine_op": "stat:linear_reg",
+     "definition": "Linear regression fits a straight line (y = mx + b) that best predicts y from x by minimizing squared error. Computed via stat:linear_reg; polynomial regression is available via stat:poly_reg.",
+     "syntax": "stat:linear_reg|{\"x\":[...],\"y\":[...]}"},
+    {"id": "hypothesis_test", "title": "Hypothesis Testing", "module": "Statistics", "engine_op": "stat:t_test_one",
+     "definition": "A hypothesis test checks whether observed data is consistent with a claim (the null hypothesis), producing a p-value/test statistic. The engine supports one- and two-sample t-tests, z-tests, chi-square tests, ANOVA, and many nonparametric tests (Wilcoxon, Mann-Whitney, Kruskal-Wallis).",
+     "syntax": "stat:t_test_one|{\"x\":[...],\"mu0\":0,\"alpha\":0.05}"},
+    {"id": "gcd", "title": "Greatest Common Divisor (GCD)", "module": "Number Theory", "engine_op": "nt:gcd",
+     "definition": "The GCD of two integers is the largest integer that divides both without a remainder. Computed via nt:gcd; the extended version (which also returns Bezout coefficients) is nt:extended_gcd.",
+     "syntax": "nt:gcd|{\"a\":48,\"b\":18}"},
+    {"id": "prime_factorization", "title": "Prime Factorization", "module": "Number Theory", "engine_op": "nt:prime_factors",
+     "definition": "Prime factorization decomposes an integer into a product of prime numbers. Computed via nt:prime_factors; related checks include nt:is_prime and nt:divisors.",
+     "syntax": "nt:prime_factors|{\"n\":60}"},
+    {"id": "modular_arithmetic", "title": "Modular Arithmetic", "module": "Number Theory", "engine_op": "nt:mod_pow",
+     "definition": "Modular arithmetic works with remainders after division by a fixed modulus. The engine supports modular exponentiation (nt:mod_pow), modular inverses (nt:mod_inverse), and linear/quadratic congruences (nt:linear_cong, nt:quad_cong).",
+     "syntax": "nt:mod_pow|{\"base\":3,\"exp\":200,\"mod\":13}"},
+    {"id": "combinations_permutations", "title": "Combinations & Permutations", "module": "Discrete Math", "engine_op": "dm:combinations",
+     "definition": "Combinations (nCr) count ways to choose r items from n without regard to order; permutations (nPr) count ordered arrangements. Computed via dm:combinations and dm:permutations.",
+     "syntax": "combinations[n,r]  or  permutations[n,r]"},
+    {"id": "graph_shortest_path", "title": "Shortest Path (Dijkstra)", "module": "Discrete Math", "engine_op": "dm:dijkstra",
+     "definition": "Dijkstra's algorithm finds the shortest path from a source node to all others in a weighted graph with non-negative edge weights, given as an adjacency matrix. Computed via dm:dijkstra (all-pairs version: dm:floyd_warshall).",
+     "syntax": "dm:dijkstra|{\"adj\":[[...]],\"src\":0}"},
+    {"id": "distance_formula", "title": "Distance Formula", "module": "Geometry", "engine_op": "geo:distance_2d",
+     "definition": "The distance between two points is the length of the straight line connecting them: sqrt((x2-x1)^2 + (y2-y1)^2) in 2D, extended with a z-term in 3D. Computed via geo:distance_2d / geo:distance_3d.",
+     "syntax": "geo:distance_2d|{\"x1\":0,\"y1\":0,\"x2\":3,\"y2\":4}"},
+    {"id": "complex_roots", "title": "Complex Roots", "module": "Complex Analysis", "engine_op": "ca:all_roots",
+     "definition": "Every nonzero complex number has exactly n distinct nth roots, evenly spaced around a circle in the complex plane. Computed via ca:all_roots.",
+     "syntax": "ca:all_roots|{\"re\":1,\"im\":0,\"n\":4}"},
+    {"id": "residue", "title": "Residue (Complex Analysis)", "module": "Complex Analysis", "engine_op": "ca:residue",
+     "definition": "The residue of a function at a pole is the coefficient of the 1/(z-z0) term in its Laurent series there, central to evaluating contour integrals via the residue theorem. Computed via ca:residue.",
+     "syntax": "ca:residue|{\"f\":\"1/z\",\"re\":0,\"im\":0,\"order\":1}"},
+    {"id": "newtons_method", "title": "Newton's Method", "module": "Numerical Analysis", "engine_op": "na:newton",
+     "definition": "Newton's method finds roots of f(x) by iterating x_{n+1} = x_n - f(x_n)/f'(x_n), converging quickly from a good starting guess. Computed via na:newton; bisection (na:bisection) and the secant method (na:secant) are more robust alternatives.",
+     "syntax": "na:newton|{\"f\":\"x^2-2\",\"x\":\"x\",\"x0\":1,\"tol\":1e-10}"},
+    {"id": "ode_rk4", "title": "Runge-Kutta (RK4)", "module": "Differential Equations", "engine_op": "de:rk4",
+     "definition": "RK4 numerically solves an ODE dy/dt = f(t,y) by taking weighted steps using four slope estimates per interval, far more accurate than Euler's method for the same step size. Computed via de:rk4 (also available: de:euler, de:rk2, de:rk45, de:adams_bashforth).",
+     "syntax": "de:rk4|{\"f\":\"t+y\",\"tvar\":\"t\",\"yvar\":\"y\",\"t0\":0,\"t1\":2,\"y0\":1,\"n\":100}"},
+    {"id": "laplace_transform", "title": "Laplace Transform", "module": "Differential Equations", "engine_op": "de:laplace",
+     "definition": "The Laplace transform converts a function of time into a function of a complex frequency variable s, turning differential equations into algebraic ones. Computed via de:laplace (inverse: de:inverse_laplace).",
+     "syntax": "de:laplace|{\"f\":\"sin(t)\",\"t\":\"t\",\"s\":\"s\"}"},
+    {"id": "group_theory", "title": "Groups (Abstract Algebra)", "module": "Abstract Algebra", "engine_op": "aa:cyclic",
+     "definition": "A group is a set with an operation satisfying closure, associativity, identity, and inverses. The engine can build cyclic groups (aa:cyclic), symmetric groups (aa:symmetric), and dihedral groups (aa:dihedral), and check properties like abelian-ness (aa:is_abelian).",
+     "syntax": "aa:cyclic|{\"n\":6}"},
+    {"id": "bayes_theorem", "title": "Bayes' Theorem", "module": "Statistics", "engine_op": "stat:bayes",
+     "definition": "Bayes' theorem relates conditional probabilities: P(A|B) = P(B|A)*P(A) / P(B), updating a prior belief given new evidence. Computed via stat:bayes.",
+     "syntax": "stat:bayes|{\"prior\":0.3,\"likelihood\":0.8,\"marginal\":0.5}"},
+    {"id": "markov_chain", "title": "Markov Chain", "module": "Statistics / Probability", "engine_op": "stat:markov_steady",
+     "definition": "A Markov chain models a system that moves between states with transition probabilities depending only on the current state. Its steady-state distribution (if it exists) is computed via stat:markov_steady.",
+     "syntax": "stat:markov_steady|{\"T\":[[...]]}"},
+    {"id": "central_limit_theorem", "title": "Central Limit Theorem", "module": "Statistics", "engine_op": "stat:clt_demo",
+     "definition": "The Central Limit Theorem states that the sampling distribution of the mean of many independent samples approaches a normal distribution, regardless of the population's original distribution, as sample size grows. Demonstrated via stat:clt_demo.",
+     "syntax": "stat:clt_demo|{\"x\":[...],\"n\":30,\"reps\":1000}"},
+    {"id": "logistic_growth", "title": "Logistic Growth", "module": "AppliedMath", "engine_op": "am:logistic_growth",
+     "definition": "Logistic growth models population growth that slows as it approaches a carrying capacity K, following dN/dt = r*N*(1-N/K). Computed via am:logistic_growth.",
+     "syntax": "am:logistic_growth|{\"r\":2,\"K\":100,\"x0\":10,\"T\":50}"},
+    {"id": "sir_model", "title": "SIR Epidemic Model", "module": "AppliedMath", "engine_op": "am:sir",
+     "definition": "The SIR model divides a population into Susceptible, Infected, and Recovered compartments and tracks how they evolve over time given transmission (beta) and recovery (gamma) rates. Computed via am:sir; the reproduction number R0 = beta/gamma is available via am:reproduction_number.",
+     "syntax": "am:sir|{\"beta\":0.3,\"gamma\":0.1,\"S0\":990,\"I0\":10,\"R0\":0,\"T\":100}"},
+    {"id": "expression_syntax", "title": "Expression Syntax", "module": "Core Engine", "engine_op": "week_4 preprocessor",
+     "definition": "Plain expressions (e.g. \"2^8 + sqrt(16)\") are parsed directly by the engine. Structured operations use either shorthand like \"diff[x^2,x]\" (expanded by Preprocessor.cpp) or the raw wire format \"prefix:op|payload\" (e.g. \"la:determinant|[[1,2],[3,4]]\", \"stat:mean|{\\\"x\\\":[1,2,3]}\"), where payload is either a bracketed literal (Linear Algebra) or a JSON object (most other modules).",
+     "syntax": "See chatbot/README.md 'Command format reference' for the full breakdown."}
+  ]
 }

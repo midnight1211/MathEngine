@@ -21,11 +21,11 @@ import java.util.Optional;
  * persistent subprocess speaking line-delimited JSON on stdin/stdout.
  *
  * ┌─────────────────────────────────────────────────────────────┐
- * │  ChatbotPanel  ──→  ChatbotBridge.classify(sessionId, text) │
- * │                            │                                │
- * │                     stdin/stdout JSONL                      │
- * │                            │                                │
- * │                  python chatbot/cli.py                      │
+ * │  ChatbotPanel  ──→  ChatbotBridge.classify(sessionId, text)  │
+ * │                            │                                 │
+ * │                     stdin/stdout JSONL                       │
+ * │                            │                                 │
+ * │                  python chatbot/cli.py                       │
  * └─────────────────────────────────────────────────────────────┘
  *
  * classify() only returns the *engine command* the message maps to

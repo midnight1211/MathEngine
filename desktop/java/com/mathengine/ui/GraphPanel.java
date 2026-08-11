@@ -588,6 +588,25 @@ public class GraphPanel extends VBox {
         addFunction();
     }
 
+    /** Clears all currently plotted functions - e.g. before a fresh
+     * chat-driven plot request, so it doesn't silently stack on top of
+     * whatever was already on the canvas. */
+    public void clearPlots() {
+	    clearAll();
+    }
+
+    /** Sts the visible axis range and redraws - e.g. for a chat request
+     * like "plot sin(x) from -10 to 10", which specifies bounds the
+     * default view wouldn't otherwise use. */
+    public void setRange(double xMin, double xMax, double yMin, double yMax) {
+	    this.xMin = xMin;
+	    this.xMax = xMax;
+	    this.yMin = yMin;
+	    this.yMax = yMax;
+	    syncRangeFields();
+	    redraw();
+    }
+
     /** Plot ODE solution points returned from DifferentialEquations module */
     public void plotPoints(String pointsJson, String label, Color color) {
         // pointsJson format: [[t0,y0],[t1,y1],...]

@@ -225,11 +225,14 @@ message, not just as a follow-up to something typed into the chat.
 
 ### 2. Chat-Driven Actions (shared state modification)
 `actions.py` detects requests that should change the UI rather than
-compute a result — currently "plot/graph/visualize ..." — and returns
-a structured action instead of an `engine_input`:
+compute a result — "plot/graph/visualize ..." (supports multiple
+functions in one request and pronoun references like "plot that") and
+"clear the graph" — and returns a structured action instead of an
+`engine_input`:
 ```json
 {"type": "SWITCH_TAB", "target": "Graph",
- "payload": {"equation": "sin(x)", "range": [-10, 10], "is3d": false}}
+ "payload": {"equations": ["sin(x)", "cos(x)"], "range": [-10, 10], "is3d": false}}
+{"type": "CLEAR_GRAPH", "target": "Graph", "payload": {}}
 ```
 `ChatbotPanel.setOnAction(...)` (desktop) and the server's
 `ChatResponse.actionType/actionTarget/actionPayload` fields carry this
