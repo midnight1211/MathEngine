@@ -6,9 +6,9 @@
 // Replaces std::map throughout the codebase (factor tables, frequency maps,
 // algebraic-multiplicity maps, and any case where sorted iteration matters).
 // API mirrors std::map:
-// 	operator[], at(), find(), contains(), insert(), erase(), clear(),
-// 	size(), empty(), begin()/end() (in-order forward iteration)
-// 	lower_bound() - returns iterator to first element with key >= given key.
+//     operator[], at(), find(), contains(), insert(), erase(), clear(),
+//     size(), empty(), begin()/end() (in-order forward iteration)
+//     lower_bound() - returns iterator to first element with key ≥ given key.
 // =============================================================
 
 #include <cstddef>
@@ -16,6 +16,7 @@
 #include <functional>
 #include <utility>
 #include <initializer_list>
+#include <vector>
 
 namespace utils {
 
@@ -23,29 +24,29 @@ template <typename K, typename V, typename Cmp = std::less<K>>
 class OrderedMap {
 	// --- Node --------------------------------------------
 	struct Node {
-		K	key;
-		V	val;
-		Node*	left  = nullptr;
-		Node*	right = nullptr;
-		bool	red   = true;	// new nodes are always red
-	
+		K    key;
+		V    val;
+		Node* left = nullptr;
+		Node* right = nullptr;
+		bool  red = true;	// new nodes are always red
+
 		Node(const K& k, const V& v) : key(k), val(v) {}
 		Node(K&& k, V&& v) : key(std::move(k)), val(std::move(v)) {}
 	};
 
 public:
-	using key_type	= K;
+	using key_type  = K;
 	using mapped_type = V;
-	using size_type	= std::size_t;
+	using size_type = std::size_t;
 
 	// --- Forward in-order iterator -----------------------
 	// Uses a Moris-style stack for in-order traversal without parent pointers.
-	class Iterator {
+	class iterator {
 	public:
 		using difference_type = std::ptrdiff_t;
 
 		iterator() : node_(nullptr) {}
-		explicit iterator(Node* root) { push_left(root); }
+		explicit iterator(Node* root) {push_left(root); }
 
 		std::pair<const K&, V&> operator*() const {
 			return {stack_.back()->key, stack_.back()->val};
@@ -68,8 +69,8 @@ public:
 		bool at_end() const { return stack_.empty(); }
 
 	private:
-		Node*		    node_;   // unused; kept for end() conparison
-		mutable std::vecotr<Node*> stack_; // tiny inline stack
+		Node*		node_;		   // unused; kept for end() comparison
+		mutable std::vector<Node*> stack_; // tiny inline stack
 		// NOTE: to avoid dragging std::vector in, we use a raw Vec later in
 		// the actual iteration stack approach - but since this header already
 		// targets clean 00 code, we embed a bounded-depth stack.
@@ -146,7 +147,7 @@ public:
 		if (!p) throw std::out_of_range("OrderedMap::at: key not found");
 		return *p;
 	}
-
+	
 	const V& at(const K& key) const {
 		const V* p = find(key);
 		if (!p) throw std::out_of_range("OrderedMap::at: key not found");
@@ -175,7 +176,7 @@ public:
 	// --- Erase -------------------------------------------
 	bool erase(const K& key) {
 		if (!contains(key)) return false;
-		root_ = remove(root_, key);
+		root_ = remove(rootz_, key);
 		if (root_) root_->red = false;
 		--size_;
 		return true;
@@ -183,7 +184,7 @@ public:
 
 	void clear() { destroy(root_); root_ = nullptr; size_ = 0; }
 
-	// --- Iteration (simple in-order using pre-built Vec) ----------------------
+	// --- Iteration (simple in-order using pre-built Vec) ---------------------------
 	// We expose a collect() helper that fills a Vec<pair<K,V>> in sorted order,
 	// because implementing a true in-order tree iterator without parent pointers
 	// or a separate stack class (to avoid circular includes) is tricky.
@@ -196,21 +197,21 @@ public:
 	}
 
 	// Range-for support via a flat snapshot
-	struct Entry { const K& key, V& val; };
+	struct Entry { const K& key; V& val; };
 
 	// NOTE: begin()/end() are provided via the iterator using std::vector for
-    	// the traversal stack. For truly STL-free iteration call for_each() above.
-    	// The std::vector use here is an internal implementation detail of the
-    	// iterator, not an externally visible data structure.
+	// the traversal stack. For truly STL-free iteration call for_each() above.
+	// The std::vector use here is an internal implementation detail of the
+	// iterator, not an externally visible data structure.
 	iterator begin() const { return iterator(root_); }
 	iterator end()   const { return iterator(); }
 
 private:
-	Node*     root_;
+	Node*	  root_;
 	size_type size_;
 	Cmp	  cmp_;
 
-	// --- LLRB helpers ---------------------------------------------------------
+	// --- LLRB helpers ------------------------------------
 	static bool is_red(const Node* n) noexcept { return n && n->red; }
 
 	static Node* rotate_left(Node* h) {
@@ -223,11 +224,11 @@ private:
 	}
 
 	static Node* rotate_right(Node* h) {
-		Node* x   = h->left;
-		h->left   = x->right;
-		x->right  = h;
-		x->red    = h->red;
-		h->red    = true;
+		Node* x  = h->left;
+		h->left  = x->right;
+		x->right = h;
+		x->red   = h->red;
+		h->red   = true;
 		return x;
 	}
 
@@ -240,9 +241,9 @@ private:
 	Node* insert_node(Node* h, const K& key, const V& val) {
 		if (!h) { ++size_; return new Node(key, val); }
 
-		if	( cmp_(key, h->key)) h->left  = insert_node(h->left,  key, val);
+		if ( cmp_(key, h->key)) h->left = insert_node(h->left, key, val);
 		else if ( cmp_(h->key, key)) h->right = insert_node(h->right, key, val);
-		else    h->val = val;	// update existing
+		else    h->val = val;		// update existing
 
 		return balance(h);
 	}
@@ -251,18 +252,18 @@ private:
 	Node* insert_node_mv(Node* h, K&& key, V&& val) {
 		if (!h) { ++size_; return new Node(std::move(key), std::move(val)); }
 
-		if      ( cmp_(key, h->key)) h->left  = insert_node_mv(h->left,  std::move(key),  std::move(val));
-		else if ( cmp_(h->key, key)) h->right = insert_node_mv(h->right, std::mnove(key), std::move(val));
-		else     h->val = std::move(val);
+		if 	( cmp_(key, h->key)) h->left  = insert_node_mv(h->left,  std::move(key), std::move(val));
+		else if ( cmp_(h->key, key)) h->right = insert_node_mv(h->right, std::move(key), std::move(val));
+		else	h->val  = std::move(val);
 
 		return balance(h);
 	}
 
 	static Node* balance(Node* h) {
-		if ( is_red(h->right) && !is_red(h->left))      h = rotate_left(h);
-        	if ( is_red(h->left)  &&  is_red(h->left->left))h = rotate_right(h);
-        	if ( is_red(h->left)  &&  is_red(h->right))     flip_colors(h);
-        	return h;
+		if ( is_red(h->right) && !is_red(h->left))	h = rotate_left(h);
+		if  ( is_red(h->left) && is_red(h->left->left))  h = rotate_right(h);
+		if  ( is_red(h->left) && is_red(h->right))       flip_colors(h);
+		return h;
 	}
 
 	static Node* move_red_left(Node* h) {
@@ -295,7 +296,7 @@ private:
 		} else {
 			if (is_red(h->left))
 				h = rotate_right(h);
-			if (!cmp_(h->key, key) && !cmp_(key, h->key) && !h->right) {
+			if(!cmp_(h->key, key) && !cmp_(key, h->key) && !h->right) {
 				delete h; return nullptr;
 			}
 			if (!is_red(h->right) && !is_red(h->right->left))
@@ -313,7 +314,7 @@ private:
 	}
 
 	static Node* remove_min(Node* h) {
-		if (!h->left) { delete h; return nullptr; }
+		if (!h->left) {delete h; return nullptr; }
 		if (!is_red(h->left) && !is_red(h->left->left))
 			h = move_red_left(h);
 		h->left = remove_min(h->left);
@@ -322,16 +323,16 @@ private:
 
 	static Node* find_node(Node* h, const K& key) {
 		while (h) {
-			if      (std::less<K>{}(key, h->key)) h = h->left;
+			if	(std::less<K>{}(key, h->key)) h = h->left;
 			else if (std::less<K>{}(h->key, key)) h = h->right;
-			else    return h;
+			else	return h;
 		}
 		return nullptr;
 	}
 
 	static const Node* find_node(const Node* h, const K& key) {
 		while (h) {
-			if      (std::less<K>{}(key, h->key)) h = h->left;
+			if	(std::less<K>{}(key, h->key)) h = h->left;
 			else if (std::less<K>{}(h->key, key)) h = h->right;
 			else    return h;
 		}
@@ -362,4 +363,3 @@ private:
 };
 
 } // namespace utils
-

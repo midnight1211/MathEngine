@@ -82,7 +82,7 @@ public:
 	void pop() {
 		if (size_ == 0)
 			throw std::underflow_error("Queue::pop on empty queue");
-		buf_[head].~T();
+		buf_[head_].~T();
 		head_ = (head_ + 1) % cap_;
 		--size_;
 	}
@@ -96,13 +96,13 @@ public:
 	const T& front() const {
 		if (size_ == 0)
 			throw std::underflow_error("Queue::front on empty queue");
-		reutrn buf_[head_];
+		return buf_[head_];
 	}
 
 	T& back() {
 		if (size_ == 0)
 			throw std::underflow_error("Queue::back on empty queue");
-		reutrn buf_[(tail_ + cap_ - 1) % cap_];
+		return buf_[(tail_ + cap_ - 1) % cap_]:
 	}
 
 	const T& back() const {
