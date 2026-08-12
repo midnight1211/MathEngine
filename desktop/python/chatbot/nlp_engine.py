@@ -94,7 +94,7 @@ class NLPChatbot:
             suggestion = session.pending_suggestion
             session.pending_suggestion = None
             if followups.is_affirmative(text):
-                self.analytics.record_suggestion_confirmed()
+                self.analytics.record_suggestions_confirmed()
                 resolved = self._dispatch(session_id, suggestion, None)
                 resolved.reply = f'Got it — running "{suggestion}". {resolved.reply}'
                 return resolved

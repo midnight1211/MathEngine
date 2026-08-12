@@ -26,6 +26,9 @@ import java.util.List;
  *   POST /api/auth/register
  *   POST /api/auth/login
  *   POST /api/compute          <- guests can compute without signing in
+ *   POST /api/chat             <- guests can use the chatbot without signing in
+ *   GET  /api/chat/status
+ *   GET  /api/docs/search      <- knowledge-base lookups, same as the desktop path
  *   GET  /                     <- mobile web UI
  *   GET  /static/**            <- CSS / JS assets
  *
@@ -68,6 +71,16 @@ public class SecurityConfig {
 
                 // Compute — public (guests can use the engine)
                 .requestMatchers(HttpMethod.POST, "/api/compute").permitAll()
+
+                // Chat — public (guests can use the chatbot, same as compute).
+                // ChatController completes wiring ChatbotService/Models.ChatRequest
+                // already had in place; see ChatController's javadoc.
+                .requestMatchers(HttpMethod.POST, "/api/chat").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/chat/status").permitAll()
+
+                // Docs knowledge-base search — public, same rationale as
+                // chatbot/knowledge.py needing no auth on the desktop path
+                .requestMatchers(HttpMethod.GET, "/api/docs/search").permitAll()
 
                 // Export — public
                 .requestMatchers(HttpMethod.POST, "/api/export").permitAll()

@@ -3,7 +3,7 @@ semantic_router.py
 ────────────────────
 A dependency-free semantic router used when the regex intent registry in
 intents.py finds no match (see nlp_engine.py's fallback branch).
- 
+
 Why this exists
 ----------------
 Every Intent in intents.py is triggered by hand-written regexes, which are
@@ -16,7 +16,7 @@ ranks canned example phrases against the user's text using difflib
 "derivative of x^2 + 3x" even though they mean the same thing, because
 difflib doesn't know "deriv" and "derivative" share a root, or that word
 order shouldn't matter.
- 
+
 This module replaces that character-level comparison with a small
 TF-IDF + cosine-similarity model over a bag of words, which is order-
 independent and down-weights filler words ("of", "the", "is") that
@@ -26,7 +26,7 @@ It stays stdlib-only (re, math, collections) for the same reason
 entities.py does: this is the one piece of an otherwise fully offline
 C++/Java/PowerShell build, and a pip dependency (scikit-learn, spaCy,
 sentence-transformers, ...) would be the odd one out.
- 
+
 What it does NOT do
 --------------------
 It does not attempt to auto-build an EngineCommand for the matched
@@ -37,7 +37,7 @@ own regex didn't match would be more likely to produce a wrong answer
 than a helpful one. Instead, the router's job is to point the user (and
 nlp_engine's fallback reply) at the *right* worked example with high
 confidence, so the very next thing they type matches for real.
- 
+
 Training data
 --------------
 The corpus has two tiers. The primary tier is built from
@@ -47,7 +47,7 @@ those labels self-consistent with the live dispatch order (smalltalk ->
 knowledge -> actions -> INTENTS -> ...) instead of duplicating that
 logic here, and means they never silently drift out of sync if
 nlp_engine's pipeline changes.
- 
+
 But EXAMPLE_PHRASES only hand-covers a few dozen intents out of the
 600+ in intents.INTENTS - every other intent had zero representation in
 the corpus and could never be suggested, no matter how close a query
@@ -73,8 +73,8 @@ _TOKEN_RE = re.compile(r"[a-zA-Z][a-zA-Z0-9']*")
 # suppresses anything that shows up in most phrases, so this is just a
 # cheap head start for the tiniest, most frequent connectors.
 _STOPWORDS = {
-        "a", "an", "the", "of", "is", "are", "and", "to", "for", "with",
-        "at", "in", "on", "as", "that", "this", "it", "its", "from",
+    "a", "an", "the", "of", "is", "are", "and", "to", "for", "with",
+    "at", "in", "on", "as", "that", "this", "it", "its", "from",
 }
 
 
@@ -108,32 +108,32 @@ def _tokenize(text: str) -> List[str]:
 
 @dataclass
 class RouteMatch:
-    intent: str         # the intent name this phrase resolved to (e.g. "calculus.derivative")
+    intent: str        # the intent name this phrase resolved to (e.g. "calculus.derivative")
     phrase: str         # the canonical example phrase, verbatim - safe to show the user
-    score: float        # cosine similarity in [0,1]
+    score: float        # cosine similarity in [0, 1]
 
 
 class SemanticRouter:
     """TF-IDF + cosine-similarity router over a small labelled phrase corpus.
 
     Usage:
-        router = SemanticRouter(labelled_phrases)       # [(intent_name, phrase), ...]
+        router = SemanticRouter(labelled_phrases)   # [(intent_name, phrase), ...]
         router.route("deriv of x^2")
         -> [RouteMatch(intent="calculus.derivative", phrase="derivative of x^2 + 3x", score=0.71), ...]
     """
 
-    def __init__(self, lavelled_phrases: List[Tuple[str, str]]):
+    def __init__(self, labelled_phrases: List[Tuple[str, str]]):
         # Keep only entries with an actual label and phrase; a phrase that
         # resolved to nothing usable (e.g. a low-confidence fallback) isn't
         # a trustworthy training example and would only teach the router
         # to route people into another dead end.
         self._entries: List[Tuple[str, str]] = [
-                (intent, phrase) for intent, phrase in labelled_phrases if intent and phrase
+            (intent, phrase) for intent, phrase in labelled_phrases if intent and phrase
         ]
         self._doc_tokens: List[List[str]] = [_tokenize(phrase) for _, phrase in self._entries]
         self._idf: Dict[str, float] = self._compute_idf(self._doc_tokens)
         self._doc_vectors: List[Dict[str, float]] = [
-                self._vectorize(tokens) for tokens in self._doc_tokens
+            self._vectorize(tokens) for tokens in self._doc_tokens
         ]
 
     @staticmethod
@@ -146,8 +146,8 @@ class SemanticRouter:
         # that appears in every single document still gets a small positive
         # weight instead of exactly zero.
         return {
-                term: math.log((1 + n_docs) / (1 + df)) + 1.0
-                for term, df in doc_freq.items()
+            term: math.log((1 + n_docs) / (1 + df)) + 1.0
+            for term, df in doc_freq.items()
         }
 
     def _vectorize(self, tokens: List[str]) -> Dict[str, float]:
@@ -161,8 +161,8 @@ class SemanticRouter:
         return vec
 
     def _query_vector(self, text: str) -> Dict[str, float]:
-        # Re-use the corpus's DIF table for the query so both sides are
-        # weighted on the same scale; any query-only temr (idf=0, since it
+        # Re-use the corpus's IDF table for the query so both sides are
+        # weighted on the same scale; any query-only term (idf=0, since it
         # never appeared in the corpus) simply contributes nothing, which
         # is the right behavior - it's a term the router has no evidence
         # about, not a term that should be penalized or crash the lookup.
@@ -200,23 +200,24 @@ class SemanticRouter:
         return ranked[:top_k]
 
 
-# --------------------------------------------------------------------------------------------
+# ─────────────────────────────────────────────────────────────────────────
 # Corpus construction and a module-level singleton, built lazily so this
 # module never has to import nlp_engine at load time (nlp_engine imports
-# this module, so a top-level circular import would break both).
-# --------------------------------------------------------------------------------------------
+# *this* module, so a top-level circular import would break both).
+# ─────────────────────────────────────────────────────────────────────────
 
 _router_singleton: Optional[SemanticRouter] = None
 
-# --- Synthetic corpus entries, derived directly from each Intent's own trigger regex --------
+# ── Synthetic corpus entries, derived directly from each Intent's own
+# trigger regex ────────────────────────────────────────────────────────
 # suggestions.EXAMPLE_PHRASES only hand-curates ~40 realistic sentences,
-# covering a small fraction of the 400+ entries in intents.INTENTS - every
-# other intent had zero semantic_router coverage, so a synonym/misspelled
+# covering a small fraction of the 600+ entries in intents.INTENTS - every
+# other intent had *zero* semantic_router coverage, so a synonym/misspelled
 # query for e.g. "romberg integration" or "kl divergence" could never be
 # suggested no matter how close it was, simply because nothing in the
 # corpus represented that intent at all.
 #
-# Rather than hand-write the 500+ more example sentences (unmaintainable, and
+# Rather than hand-write 500+ more example sentences (unmaintainable, and
 # guaranteed to drift from the actual patterns over time), this extracts
 # the literal keyword text already embedded in each intent's own regex -
 # which is, after all, exactly the vocabulary a real trigger phrase would
@@ -230,7 +231,7 @@ _REGEX_JUNK_CHARS_RE = re.compile(r"[.^$*+{}\[\]()|?]")
 _WORD_RE = re.compile(r"[a-zA-Z][a-zA-Z']*")
 
 
-def _keywords_from_pattern(patterns: "re.Patterm") -> str:
+def _keywords_from_pattern(pattern: "re.Pattern") -> str:
     """Strips regex syntax out of one Intent pattern's source, leaving just
     the literal words it was built from - e.g. the pattern for "romberg
     integration" style triggers becomes the phrase "romberg integration
@@ -252,12 +253,12 @@ def _keywords_from_pattern(patterns: "re.Patterm") -> str:
 
 
 def _synthetic_corpus_entries(already_labelled_intents: set) -> List[Tuple[str, str]]:
-    from intents import INTENTS # deferred: see module docstring
+    from intents import INTENTS  # deferred: see module docstring
 
     entries: List[Tuple[str, str]] = []
     for intent in INTENTS:
         if intent.name in already_labelled_intents:
-            continue # a real example phrase already covers this intent
+            continue  # a real example phrase already covers this intent
         phrase = _keywords_from_pattern(intent.patterns[0])
         if phrase:
             entries.append((intent.name, phrase))
@@ -265,7 +266,7 @@ def _synthetic_corpus_entries(already_labelled_intents: set) -> List[Tuple[str, 
 
 
 def _build_labelled_corpus() -> List[Tuple[str, str]]:
-    # Deferred import - see module docstring / comment above
+    # Deferred import - see module docstring / comment above.
     from nlp_engine import NLPChatbot
     import suggestions
 
@@ -275,20 +276,20 @@ def _build_labelled_corpus() -> List[Tuple[str, str]]:
         # A throwaway session per phrase: these are one-shot canonical
         # examples, not a real conversation, so there's no reason for one
         # phrase's session state (last expression, etc.) to leak into the
-        # next phrase's labelling
+        # next phrase's labelling.
         result = bot.handle(f"__router_corpus__{len(labelled)}", phrase)
         # Only trust labels the pipeline itself was confident about -
         # a phrase that only reached fallback.passthrough or an
         # arithmetic/syntax-error branch teaches the router nothing useful
-        # about "which intent" it represents.
+        # about *which intent* it represents.
         if result.confidence >= 0.6 and not result.intent.endswith((".syntax_error", "passthrough")):
             labelled.append((result.intent, phrase))
-    
+
     # Fill in every intent EXAMPLE_PHRASES doesn't reach with a synthetic,
     # regex-derived phrase - see _synthetic_corpus_entries() above. These
     # are lower-fidelity than a real hand-written sentence (no natural
     # word order, occasional leftover noise word), but a rough phrase is
-    # still far better than the total silence those 500+ intents has
+    # still far better than the total silence those 500+ intents had
     # before: without this, the router could never suggest them at all,
     # no matter how close a real query came.
     already_labelled = {intent for intent, _ in labelled}
