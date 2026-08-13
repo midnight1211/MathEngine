@@ -681,14 +681,30 @@ inline std::vector<long long> mcParseVecI(const std::string &s)
 inline std::vector<std::vector<double>> mcParseMat(const std::string &s)
 {
     std::vector<std::vector<double>> m;
+    // Strip the matrix's own outer brackets first, e.g. "[[1,2],[3,4]]"
+    // -> "[1,2],[3,4]". Without this, the loop below's very first
+    // find('[', pos) locates the matrix's OUTER bracket rather than row
+    // 0's own bracket. That shifts pos one character too early, so row 0
+    // gets built as "[" + "[1,2" + "]" = "[[1,2]" - a malformed,
+    // double-bracketed string. mcParseVecD then strips only one layer of
+    // brackets, leaving a leading "[" stuck to the first token (e.g.
+    // "[1"), which fails std::stod and is silently dropped - so row 0
+    // comes back missing its first element while every row after it
+    // parses correctly (the misalignment self-corrects after row 0).
+    // Concretely: mcParseMat("[[1,1],[0,1]]") returned {{1},{0,1}} - a
+    // ragged result - instead of {{1,1},{0,1}}, corrupting every matrix
+    // any caller (e.g. NumericalAnalysis::gaussianElim) parsed this way.
+    std::string t = s;
+    if (!t.empty() && t.front() == '[' && t.back() == ']')
+        t = t.substr(1, t.size() - 2);
     size_t pos = 0;
-    while ((pos = s.find('[', pos)) != std::string::npos)
+    while ((pos = t.find('[', pos)) != std::string::npos)
     {
         ++pos;
-        size_t end = s.find(']', pos);
+        size_t end = t.find(']', pos);
         if (end == std::string::npos)
             break;
-        auto row = mcParseVecD("[" + s.substr(pos, end - pos) + "]");
+        auto row = mcParseVecD("[" + t.substr(pos, end - pos) + "]");
         if (!row.empty())
             m.push_back(row);
         pos = end + 1;

@@ -136,19 +136,113 @@ inline DMat cu_parseMat(const std::string &s)
 inline IMat cu_parseMatI(const std::string &s)
 {
     IMat m;
+    // Same outer-bracket-consumption bug as mcParseMat (see MathCore.hpp)
+    // was independently duplicated here - strip the matrix's own outer
+    // brackets first so the row-finding loop's first find('[', pos) lands
+    // on row 0's own bracket instead of the matrix's.
+    std::string t = s;
+    if (!t.empty() && t.front() == '[' && t.back() == ']')
+        t = t.substr(1, t.size() - 2);
     size_t pos = 0;
-    while ((pos = s.find('[', pos)) != std::string::npos)
+    while ((pos = t.find('[', pos)) != std::string::npos)
     {
         ++pos;
-        size_t end = s.find(']', pos);
+        size_t end = t.find(']', pos);
         if (end == std::string::npos)
             break;
-        auto row = cu_parseVecI("[" + s.substr(pos, end - pos) + "]");
+        auto row = cu_parseVecI("[" + t.substr(pos, end - pos) + "]");
         if (!row.empty())
             m.push_back(row);
         pos = end + 1;
     }
     return m;
+}
+
+// Parse "[[re1,im1],[re2,im2],...]" -> vector<pair<double,double>>. Feature:
+// shared, tested replacement for the kind of one-off bracket-scanning loop
+// ComplexAnalysis's residue_theorem used to hand-roll for its pole list
+// (and got the same outer-bracket bug wrong in the process - see CA.cpp).
+// Built on cu_parseMat rather than its own loop, so it can't independently
+// drift from the one proven implementation.
+inline std::vector<std::pair<double,double>> cu_parsePairs(const std::string &s)
+{
+    std::vector<std::pair<double,double>> out;
+    for (const auto &row : cu_parseMat(s))
+        if (row.size() >= 2)
+            out.push_back({row[0], row[1]});
+    return out;
+}
+
+// ── Dimension validation ────────────────────────────────────────────────
+// Feature: shared pre-flight checks for matrix/vector shape, meant to be
+// called at the top of a dispatch() branch, before any real computation.
+// The ragged-matrix bug (see mcParseMat above) got as far as an
+// out-of-bounds read specifically because nothing upstream rejected a
+// malformed shape early - these turn "silently wrong answer or UB" into
+// a clear, catchable error instead. Throw std::invalid_argument rather
+// than returning a sentinel so a forgotten check fails loudly in testing
+// instead of silently passing bad data through; every module's dispatch()
+// already runs under a top-level try/catch (see CoreEngine.cpp), so this
+// degrades to a clean error reply, not a crash.
+
+inline bool cu_isRectangular(const DMat &m)
+{
+    if (m.empty())
+        return true;
+    size_t cols = m[0].size();
+    for (const auto &row : m)
+        if (row.size() != cols)
+            return false;
+    return true;
+}
+
+inline void cu_requireRectangular(const DMat &m, const std::string &context)
+{
+    if (!cu_isRectangular(m))
+        throw std::invalid_argument(context + ": matrix rows have inconsistent lengths (ragged/malformed input)");
+}
+
+inline void cu_requireSquare(const DMat &m, const std::string &context)
+{
+    cu_requireRectangular(m, context);
+    if (m.empty() || m.size() != m[0].size())
+        throw std::invalid_argument(context + ": expected a square matrix, got "
+            + std::to_string(m.size()) + "x" + std::to_string(m.empty() ? 0 : m[0].size()));
+}
+
+// A x B is only defined when A's column count matches B's row count.
+inline void cu_requireMultipliable(const DMat &A, const DMat &B, const std::string &context)
+{
+    cu_requireRectangular(A, context);
+    cu_requireRectangular(B, context);
+    size_t aCols = A.empty() ? 0 : A[0].size();
+    size_t bRows = B.size();
+    if (aCols != bRows)
+        throw std::invalid_argument(context + ": cannot multiply a " + std::to_string(A.size()) + "x"
+            + std::to_string(aCols) + " matrix by a " + std::to_string(bRows) + "x"
+            + std::to_string(B.empty() ? 0 : B[0].size()) + " matrix (inner dimensions must match)");
+}
+
+// A and B must have identical shape (elementwise add/subtract).
+inline void cu_requireSameShape(const DMat &A, const DMat &B, const std::string &context)
+{
+    cu_requireRectangular(A, context);
+    cu_requireRectangular(B, context);
+    size_t aCols = A.empty() ? 0 : A[0].size();
+    size_t bCols = B.empty() ? 0 : B[0].size();
+    if (A.size() != B.size() || aCols != bCols)
+        throw std::invalid_argument(context + ": matrix shapes differ (" + std::to_string(A.size()) + "x"
+            + std::to_string(aCols) + " vs " + std::to_string(B.size()) + "x" + std::to_string(bCols) + ")");
+}
+
+// A (n x n) matrix acting on a vector needs a vector of length n.
+inline void cu_requireCompatibleVec(const DMat &A, const DVec &v, const std::string &context)
+{
+    cu_requireRectangular(A, context);
+    size_t aCols = A.empty() ? 0 : A[0].size();
+    if (aCols != v.size())
+        throw std::invalid_argument(context + ": matrix has " + std::to_string(aCols)
+            + " columns but vector has " + std::to_string(v.size()) + " entries");
 }
 
 // =============================================================================

@@ -2,6 +2,7 @@
 
 #include "Statistics.hpp"
 #include "Statistics_internal.hpp"
+#include "../CommonUtils.hpp"
 #include <cmath>
 #include <algorithm>
 #include <numeric>
@@ -26,34 +27,15 @@ namespace Statistics
     {
         return {true, val, detail, ""};
     }
+    // Feature: consolidated onto the shared cu_parseMat (CommonUtils.hpp)
+    // instead of a local reimplementation - this file used to have its own
+    // copy of the outer-bracket-consumption bug that cu_parseMat itself
+    // had (see MathCore.hpp's mcParseMat comment); rather than keep two
+    // independently-maintained matrix parsers in sync by hand, this now
+    // just calls the one shared, tested implementation.
     static std::vector<Vec> parseMatrix(const std::string &s)
     {
-        std::vector<Vec> M;
-        size_t pos = 0;
-        while ((pos = s.find('[', pos)) != std::string::npos)
-        {
-            ++pos;
-            size_t end = s.find(']', pos);
-            if (end == std::string::npos)
-                break;
-            Vec row;
-            std::istringstream rs(s.substr(pos, end - pos));
-            std::string tok;
-            while (std::getline(rs, tok, ','))
-            {
-                try
-                {
-                    row.push_back(std::stod(tok));
-                }
-                catch (...)
-                {
-                }
-            }
-            if (!row.empty())
-                M.push_back(row);
-            pos = end + 1;
-        }
-        return M;
+        return cu_parseMat(s);
     }
 
     static StatResult err(const std::string &msg)
@@ -956,7 +938,7 @@ namespace Statistics
         return r;
     }
 
-    RegressionResult logisticRegression(const std::vector<Vec> &X, const Vec &y, int maxIter)
+    RegressionResult logisticRegression(cot std::vector<Vec> &X, const Vec &y, int maxIter)
     {
         RegressionResult r;
         int n = y.size(), p = X[0].size() + 1;
@@ -1009,8 +991,7 @@ namespace Statistics
         int n = y.size(), k = X[0].size();
         std::vector<Vec> Xd(n, Vec(k + 1));
         for (int i = 0; i < n; ++i)
-        {
-            Xd[i][0] = 1;
+                  Xd[i][0] = 1;
             for (int j = 0; j < k; ++j)
                 Xd[i][j + 1] = X[i][j];
         }
@@ -1084,7 +1065,7 @@ namespace Statistics
         r.adjR2 = 1 - (1 - r.r2) * (n - 1) / (n - m);
         r.rmse = std::sqrt(sse / (n - m));
         std::ostringstream ss;
-        ss << "Multiple regression: R²=" << fmt(r.r2) << ",  adj R²=" << fmt(r.adjR2);
+        ss << "Multiple regression: R²=" << fmt(r.2) << ",  adj R²=" << fmt(r.adjR2);
         r.summary = ss.str();
         return r;
     }
@@ -1097,7 +1078,7 @@ namespace Statistics
     {
         if (std::abs(marginal) < 1e-15)
             return err("Marginal probability cannot be zero");
-        double posterior = prior * likelihood / marginal;
+        double posterior = prior * likelihood  marginal;
         std::ostringstream ss;
         ss << "P(H|E) = P(E|H)·P(H) / P(E)\n"
            << "       = " << fmt(likelihood) << " × " << fmt(prior) << " / " << fmt(marginal)
@@ -1114,7 +1095,7 @@ namespace Statistics
         return ok(fmt(H), "bits");
     }
 
-    StatResult klDivergence(const Vec &P, const Vec &Q)
+    StatResult klDivergence(cst Vec &P, const Vec &Q)
     {
         if (P.size() != Q.size())
             return err("P and Q must have equal length");
@@ -1147,7 +1128,7 @@ namespace Statistics
         for (int i = 0; i < n; ++i)
         {
             if (i)
-                ss << ", ";
+                ss << ";
             ss << fmt(pi[i]);
         }
         ss << "]";
