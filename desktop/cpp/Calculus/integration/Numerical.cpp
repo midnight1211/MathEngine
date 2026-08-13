@@ -190,10 +190,20 @@ NumericalResult romberg(const Func1D& f, double a, double b, int maxRows) {
         h /= 2.0;
         double sum = 0.0;
         int pts = 1 << (i - 1);   // 2^(i-1) new points
-        for (int k = 1; k <= pts; k += 2) {
+        // Bug fix: the new odd-indexed sample points on the refined grid
+        // range over k = 1, 3, 5, ..., 2^i - 1 (exactly `pts` of them) -
+        // the loop bound must be 2^i - 1, not `pts` itself. For i=1 these
+        // happen to coincide (2^0=1=2^1-1), which is why this only broke
+        // starting at i=2: the old `k <= pts` bound silently sampled just
+        // half the required new points every row from there on, so R[i][0]
+        // for i>=2 (and everything the Richardson extrapolation below
+        // derives from it) was never the correct refined trapezoidal
+        // estimate.
+        int kMax = (1 << i) - 1;
+        for (int k = 1; k <= kMax; k += 2) {
             sum += f(a + k * h);
         }
-        totalEvals += pts / 2 + 1;
+        totalEvals += pts;
         R[i][0] = 0.5 * R[i-1][0] + h * sum;
     }
 
