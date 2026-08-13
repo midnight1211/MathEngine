@@ -805,22 +805,10 @@ namespace ComplexAnalysis
                 return betaFunctionC(getN(json, "re1"), getN(json, "im1"), getN(json, "re2"), getN(json, "im2"));
             if (op == "residue_theorem")
             {
-                std::vector<std::pair<double, double>> poles;
-                auto poleArr = getP(json, "poles");
-                // Parse [[re1,im1],[re2,im2],...]
-                size_t pos = 0;
-                while ((pos = poleArr.find('[', pos)) != std::string::npos)
-                {
-                    ++pos;
-                    size_t end = poleArr.find(']', pos);
-                    if (end == std::string::npos)
-                        break;
-                    std::string pair = poleArr.substr(pos, end - pos);
-                    auto comma = pair.find(',');
-                    if (comma != std::string::npos)
-                        poles.push_back({std::stod(pair.substr(0, comma)), std::stod(pair.substr(comma + 1))});
-                    pos = end + 1;
-                }
+                // Feature: consolidated onto the shared cu_parsePairs
+                // (CommonUtils.hpp) instead of a local reimplementation -
+                // see Statistics.cpp's parseMatrix for the same change.
+                std::vector<std::pair<double, double>> poles = cu_parsePairs(getP(json, "poles"));
                 return residueTheorem(getP(json, "f"), poles);
             }
             if (op == "radius_conv")

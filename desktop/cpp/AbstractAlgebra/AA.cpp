@@ -994,7 +994,7 @@ namespace AbstractAlgebra
         {
             if (i)
                 ss << ",";
-            ss << perm[i];
+           ss << perm[i];
         }
         ss << "]\n\n";
         bool isId = true;
@@ -1105,7 +1105,7 @@ namespace AbstractAlgebra
         for (int i = 0; i < n; ++i)
             result[i] = q[p[qinv[i]]];
         std::ostringstream ss;
-        ss << "q σ q⁻¹ = [";
+	ss << "q σ q⁻¹ = [";
         for (int i = 0; i < n; ++i)
         {
             if (i)
@@ -1519,19 +1519,11 @@ namespace AbstractAlgebra
                 return fieldExtension((int)getN(json, "p"), parsePoly(getP(json, "minpoly")));
             if (op == "burnside")
             {
-                std::vector<Vec> orbits;
-                auto raw = getP(json, "orbits");
-                size_t pos = 0;
-                while ((pos = raw.find('[', pos)) != std::string::npos)
-                {
-                    ++pos;
-                    size_t end = raw.find(']', pos);
-                    if (end == std::string::npos)
-                        break;
-                    Vec r = parseVec("[" + raw.substr(pos, end - pos) + "]");
-                    orbits.push_back(r);
-                    pos = end + 1;
-                }
+                // Feature: consolidated onto the shared cu_parseMat
+                // (CommonUtils.hpp) instead of a local reimplementation -
+                // see Statistics.cpp's parseMatrix for the same change and
+                // rationale.
+                std::vector<Vec> orbits = cu_parseMatI(getP(json, "orbits"));
                 return burnside(orbits);
             }
             if (op == "crt_ring")
