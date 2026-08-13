@@ -1035,8 +1035,8 @@ namespace NumberTheory
                 return elGamal(getLL(json, "p"), getLL(json, "g"), getLL(json, "x"));
             if (op == "crt")
             {
-                Vec rv;
-                Vec mv;
+                Vec rv = cu_parseVecI(getP(json, "remainders"));
+                Vec mv = cu_parseVecI(getP(json, "moduli"));
                 return chineseRemainder(rv, mv);
             }
 
