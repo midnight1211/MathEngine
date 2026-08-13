@@ -176,7 +176,7 @@ public:
 	// --- Erase -------------------------------------------
 	bool erase(const K& key) {
 		if (!contains(key)) return false;
-		root_ = remove(rootz_, key);
+		root_ = remove(root_, key);
 		if (root_) root_->red = false;
 		--size_;
 		return true;

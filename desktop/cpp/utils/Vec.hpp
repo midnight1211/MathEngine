@@ -22,6 +22,7 @@
 #include <new>
 #include <algorithm>
 #include <iterator>
+#include <type_traits>
 
 namespace utils {
 
@@ -64,7 +65,8 @@ public:
             new (data_ + i++) T(v);
     }
 
-    template<typename InputIt>
+    template<typename InputIt,
+             typename = std::enable_if_t<!std::is_integral<InputIt>::value>>
     Vec(InputIt first, InputIt last)
         : data_(nullptr), size_(0), cap_(0)
     {

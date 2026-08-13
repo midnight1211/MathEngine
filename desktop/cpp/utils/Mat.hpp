@@ -179,9 +179,9 @@ public:
     }
 
 private:
-    Vec<Vec<T>> data_;
     size_type   rows_ = 0;
     size_type   cols_ = 0;
+    Vec<Vec<T>> data_;
 };
 
 // Convenience aliases

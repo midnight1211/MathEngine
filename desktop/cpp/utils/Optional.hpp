@@ -61,7 +61,7 @@ private:
 	bool has_;
 
 	T&	 val()	     noexcept { return *reinterpret_cast<T*>(&buf_); }
-	const T& val() const noexcept { return *reinterpret_cast<const T*>(&bif_); }
+	const T& val() const noexcept { return *reinterpret_cast<const T*>(&buf_); }
 };
 
 template <typename T>

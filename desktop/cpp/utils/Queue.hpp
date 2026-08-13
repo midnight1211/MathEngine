@@ -102,7 +102,7 @@ public:
 	T& back() {
 		if (size_ == 0)
 			throw std::underflow_error("Queue::back on empty queue");
-		return buf_[(tail_ + cap_ - 1) % cap_]:
+		return buf_[(tail_ + cap_ - 1) % cap_];
 	}
 
 	const T& back() const {
@@ -134,7 +134,7 @@ private:
 
 	static T* alloc(size_type n) {
 		if (n == 0) return nullptr;
-		return static_cast<T*>(::operator mew(n * sizeof(T)));
+		return static_cast<T*>(::operator new(n * sizeof(T)));
 	}
 
 	static void dealloc(T* p) noexcept { ::operator delete(p); }
