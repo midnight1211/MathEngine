@@ -39,12 +39,9 @@ static inline long long mulmod(long long a, long long b, long long m)
 #include <sstream>
 #include <ostream>
 #include <istream>
-#include <algorithm>
-#include <numeric>
-#include <map>
-#include <set>
 #include <random>
 #include <stdexcept>
+#include "../utils/Utils.hpp"
 
 namespace NumberTheory
 {
@@ -53,9 +50,9 @@ namespace NumberTheory
     static NTResult err(const std::string &m) { return {false, "", "", m}; }
 
     // ── Sieve of Eratosthenes ────────────────────────────────────────────────────
-    static std::vector<bool> sieve(long long n)
+    static utils::Vec<bool> sieve(long long n)
     {
-        std::vector<bool> is_prime(n + 1, true);
+        utils::Vec<bool> is_prime(n + 1, true);
         is_prime[0] = is_prime[1] = false;
         for (long long i = 2; i * i <= n; ++i)
             if (is_prime[i])
@@ -113,7 +110,7 @@ namespace NumberTheory
             return err("n must be >= 1");
         if (n == 1)
             return ok("1", "1 has no prime factors");
-        std::map<long long, int> factors;
+        utils::OrderedMap<long long, int> factors;
         long long m = n;
         for (long long p = 2; p * p <= m; ++p)
             while (m % p == 0)
@@ -126,7 +123,7 @@ namespace NumberTheory
         std::ostringstream sym, det;
         sym << n << " = ";
         bool first = true;
-        for (auto &[p, e] : factors)
+        for (auto [p, e] : factors)
         {
             if (!first)
                 sym << " x ";
@@ -143,7 +140,7 @@ namespace NumberTheory
     {
         if (n < 2)
             return ok("none");
-        auto sp = sieve(std::min(n, 100000LL));
+        auto sp = sieve(utils::min(n, 100000LL));
         std::ostringstream ss;
         int count = 0;
         for (long long i = 2; i <= n && i < (long long)sp.size(); ++i)
@@ -158,7 +155,7 @@ namespace NumberTheory
 
     NTResult primeCountingFn(long long n)
     {
-        auto sp = sieve(std::min(n, 1000000LL));
+        auto sp = sieve(utils::min(n, 1000000LL));
         long long count = 0;
         for (long long i = 2; i <= n && i < (long long)sp.size(); ++i)
             if (sp[i])
@@ -236,7 +233,7 @@ namespace NumberTheory
     {
         if (n < 1)
             return err("n must be >= 1");
-        std::vector<long long> d;
+        utils::Vec<long long> d;
         for (long long i = 1; i * i <= n; ++i)
             if (n % i == 0)
             {
@@ -244,7 +241,7 @@ namespace NumberTheory
                 if (i != n / i)
                     d.push_back(n / i);
             }
-        std::sort(d.begin(), d.end());
+        utils::sort(d.begin(), d.end());
         std::ostringstream ss;
         for (size_t i = 0; i < d.size(); ++i)
         {
@@ -498,7 +495,7 @@ namespace NumberTheory
                 if (r == 3 || r == 5)
                     result = -result;
             }
-            std::swap(a, n);
+            utils::swap(a, n);
             if (a % 4 == 3 && n % 4 == 3)
                 result = -result;
             a %= n;
@@ -523,7 +520,7 @@ namespace NumberTheory
         auto phi = eulerPhi(p);
         long long phiP = std::stoll(phi.value);
         auto pf = primeFactors(phiP);
-        std::vector<long long> factors;
+        utils::Vec<long long> factors;
         long long m = phiP;
         for (long long q = 2; q * q <= m; ++q)
             if (m % q == 0)
@@ -555,7 +552,7 @@ namespace NumberTheory
     NTResult discreteLog(long long base, long long target, long long mod)
     {
         long long m = (long long)std::ceil(std::sqrt((double)mod));
-        std::map<long long, long long> table;
+        utils::OrderedMap<long long, long long> table;
         long long val = 1;
         for (long long j = 0; j < m; ++j)
         {
@@ -566,7 +563,7 @@ namespace NumberTheory
         val = target;
         for (long long i = 0; i < m; ++i)
         {
-            if (table.count(val))
+            if (table.contains(val))
             {
                 long long x = i * m + table[val];
                 return ok(str(x), str(base) + "^" + str(x) + "==" + str(target) + " (mod " + str(mod) + ")");
@@ -604,7 +601,7 @@ namespace NumberTheory
     {
         if (m > 10000)
             return err("m too large for brute-force; use special algorithms");
-        std::vector<long long> sols;
+        utils::Vec<long long> sols;
         for (long long x = 0; x < m; ++x)
         {
             if ((mulmod(mulmod(a, x, m), x, m) + mulmod(b, x, m) + c) % m == 0)
@@ -678,7 +675,7 @@ namespace NumberTheory
 
     NTResult partitionFn(int n)
     {
-        std::vector<long long> p(n + 1, 0);
+        utils::Vec<long long> p(n + 1, 0);
         p[0] = 1;
         for (int m = 1; m <= n; ++m)
         {
@@ -698,7 +695,7 @@ namespace NumberTheory
 
     NTResult bellNumber(int n)
     {
-        std::vector<std::vector<long long>> B(n + 1, std::vector<long long>(n + 1, 0));
+        utils::Mat<long long> B(n + 1, n + 1, 0);
         B[0][0] = 1;
         for (int i = 1; i <= n; ++i)
         {
@@ -711,7 +708,7 @@ namespace NumberTheory
 
     NTResult stirling1st(int n, int k)
     {
-        std::vector<std::vector<long long>> s(n + 1, std::vector<long long>(n + 1, 0));
+        utils::Mat<long long> s(n + 1, n + 1, 0);
         s[0][0] = 1;
         for (int i = 1; i <= n; ++i)
             for (int j = 1; j <= i; ++j)
@@ -721,17 +718,17 @@ namespace NumberTheory
 
     NTResult stirling2nd(int n, int k)
     {
-        std::vector<std::vector<long long>> S(n + 1, std::vector<long long>(k + 1, 0));
+        utils::Mat<long long> S(n + 1, k + 1, 0);
         S[0][0] = 1;
         for (int i = 1; i <= n; ++i)
-            for (int j = 1; j <= std::min(i, k); ++j)
+            for (int j = 1; j <= utils::min(i, k); ++j)
                 S[i][j] = j * S[i - 1][j] + S[i - 1][j - 1];
         return ok(str(S[n][k]), "{" + str(n) + "," + str(k) + "} = " + str(S[n][k]));
     }
 
     NTResult bernoulliNumber(int n)
     {
-        std::vector<double> a(n + 2);
+        utils::Vec<double> a(n + 2);
         for (int i = 0; i <= n + 1; ++i)
             a[i] = 1.0 / (i + 1);
         for (int i = 1; i <= n + 1; ++i)
@@ -783,7 +780,7 @@ namespace NumberTheory
                     continue;
                 long long a = m * m - n * n, b = 2 * m * n, c = m * m + n * n;
                 if (a > b)
-                    std::swap(a, b);
+                    utils::swap(a, b);
                 if (c > limit)
                     continue;
                 ss << "  (" << a << "," << b << "," << c << ")\n";
@@ -1035,8 +1032,10 @@ namespace NumberTheory
                 return elGamal(getLL(json, "p"), getLL(json, "g"), getLL(json, "x"));
             if (op == "crt")
             {
-                Vec rv = cu_parseVecI(getP(json, "remainders"));
-                Vec mv = cu_parseVecI(getP(json, "moduli"));
+                auto rv_std = cu_parseVecI(getP(json, "remainders"));
+                auto mv_std = cu_parseVecI(getP(json, "moduli"));
+                Vec rv(rv_std.begin(), rv_std.end());
+                Vec mv(mv_std.begin(), mv_std.end());
                 return chineseRemainder(rv, mv);
             }
 

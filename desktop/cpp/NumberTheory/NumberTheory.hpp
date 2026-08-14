@@ -5,7 +5,7 @@
 #define NUMBERTHEORY_HPP
 
 #include <string>
-#include <vector>
+#include "../utils/Utils.hpp"
 
 namespace NumberTheory
 {
@@ -18,7 +18,7 @@ namespace NumberTheory
         std::string error;
     };
 
-    using Vec = std::vector<long long>;
+    using Vec = utils::Vec<long long>;
 
     // ── Primes ────────────────────────────────────────────────────────────────────
     NTResult isPrime(long long n);

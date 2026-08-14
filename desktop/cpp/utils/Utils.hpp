@@ -17,6 +17,10 @@
 //   std::optional<T>          →  utils::Optional<T>
 //   std::complex<double>      →  utils::Complex
 //   std::function<R(Args...)> →  utils::Function<R(Args...)>
+//   std::set<T>               →  utils::Set<T>
+//   std::sort/min/max/swap/accumulate/iota/max_element/min_element/
+//   upper_bound/unique/reverse/all_of (algorithm+numeric) → utils:: free
+//   functions of the same name (Algorithm.hpp), same call signature.
 //
 // Existing type aliases (DVec, DMat, IVec, SVec, …) are preserved and
 // re-declared in the utils namespace so every module that does
@@ -36,6 +40,9 @@
 #include "Tuple3.hpp"
 #include "Optional.hpp"
 #include "Function.hpp"
+#include "Set.hpp"
+#include "Algorithm.hpp"
+#include "PriorityQueue.hpp"
 
 namespace utils {
 
